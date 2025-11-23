@@ -4,7 +4,7 @@ import { store } from '../store/store';
 
 // -------------------- Axios instance --------------------
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'https://doc-verify-server.onrender.com/api',
+  baseURL: process.env.REACT_APP_API_URL || 'https://orbit-verify-server.onrender.com/api',
   timeout: 15000,
 });
 
