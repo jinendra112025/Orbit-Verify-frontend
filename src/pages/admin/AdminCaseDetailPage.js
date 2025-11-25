@@ -897,9 +897,22 @@ const AdminCaseDetailPage = () => {
 
     // Find all documents related to this check using the improved logic
     const uploadKeys = findUploadsKeysFor(rawCheckType);
-    const uploads = uniqDocs(
+    const uploadsMapped = uniqDocs(
       uploadKeys.flatMap((fk) => getUploadsForField(fk))
     );
+
+    // 2) candidate uploads not in uploads mapping but linked through Document.checkType
+    const candidateDocs = uniqDocs(
+      (caseDetail.documents || []).filter(
+        (d) =>
+          d &&
+          !d.originalFilename?.startsWith("[VERIFIED]") &&
+          normalizeKey(d.checkType) === key
+      )
+    );
+
+    // Final combined list
+    const uploads = uniqDocs([...uploadsMapped, ...candidateDocs]);
 
     // Helper to check if an object has any meaningful data
     const hasAnyValue = (obj) => {
