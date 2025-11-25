@@ -122,53 +122,150 @@ const CandidateUploadPage = () => {
   };
 
   // NEW RENDER FUNCTION: Renders form fields based on a schema
-  const renderCheckFields = (check) => {
-    const schema = check.schema;
-    if (!schema || !schema._self)
-      return <p>No details required for this check.</p>;
+const renderCheckFields = (check) => {
+  const schema = check.schema;
+  const checkSlug = toCheckSlug(check);
 
-    const checkSlug = toCheckSlug(check);
+  if (!schema) return <p>No details required for this check.</p>;
 
-    // We will only render the "_self" section of the schema for candidates
-    return schema._self.map((field) => {
-      if (field.type === "file") {
-        const currentFile = checkDetails[checkSlug]?._self?._file;
-        return (
-          <Box key={field.name} sx={{ mt: 1 }}>
-            <Button variant="outlined" component="label">
-              {field.label || "Upload Document"}
-              <input
-                type="file"
-                hidden
-                onChange={(e) =>
-                  handleDetailFile(checkSlug, "_self", e.target.files[0])
-                }
-              />
-            </Button>
-            {currentFile && (
-              <Typography variant="caption" sx={{ ml: 2 }}>
-                {currentFile.name}
-              </Typography>
-            )}
-          </Box>
-        );
-      }
-      // Default to a text field
+  // Helper to render a single field
+  const renderField = (field, subKey = "_self", index = null) => {
+    const keyPrefix = index !== null ? `${field.name}_${index}` : field.name;
+
+    // TEXT INPUT
+    if (field.type === "text" || field.type === "date") {
       return (
         <TextField
-          key={field.name}
+          key={keyPrefix}
           fullWidth
           size="small"
-          sx={{ mt: 2 }}
+          sx={{ my: 1 }}
           label={field.label}
-          value={checkDetails[checkSlug]?._self?.[field.name] || ""}
+          type={field.type === "date" ? "date" : "text"}
+          InputLabelProps={field.type === "date" ? { shrink: true } : {}}
+          value={
+            checkDetails?.[checkSlug]?.[subKey]?.[keyPrefix] || ""
+          }
           onChange={(e) =>
-            handleDetailChange(checkSlug, "_self", field.name, e.target.value)
+            handleDetailChange(check, subKey, keyPrefix, e.target.value)
           }
         />
       );
-    });
+    }
+
+    // RADIO GROUP
+    if (field.type === "radio") {
+      return (
+        <Box key={keyPrefix} sx={{ my: 1 }}>
+          <Typography>{field.label}</Typography>
+          <Box sx={{ display: "flex", gap: 2, my: 1 }}>
+            {field.options.map((opt) => (
+              <label key={opt}>
+                <input
+                  type="radio"
+                  name={`${checkSlug}_${subKey}_${field.name}`}
+                  value={opt}
+                  checked={
+                    checkDetails?.[checkSlug]?.[subKey]?.[field.name] === opt
+                  }
+                  onChange={() =>
+                    handleDetailChange(check, subKey, field.name, opt)
+                  }
+                />
+                &nbsp;{opt}
+              </label>
+            ))}
+          </Box>
+        </Box>
+      );
+    }
+
+    // FILE UPLOAD
+    if (field.type === "file") {
+      return (
+        <Box key={keyPrefix} sx={{ mt: 1 }}>
+          <Button variant="outlined" component="label">
+            {field.label}
+            <input
+              type="file"
+              hidden
+              onChange={(e) =>
+                handleDetailFile(check, subKey, e.target.files[0])
+              }
+            />
+          </Button>
+
+          {checkDetails?.[checkSlug]?.[subKey]?._file && (
+            <Typography variant="caption" sx={{ ml: 2 }}>
+              {checkDetails?.[checkSlug]?.[subKey]?._file?.name}
+            </Typography>
+          )}
+        </Box>
+      );
+    }
+
+    return null;
   };
+
+  // CASE 1: Simple _self schema
+  if (schema._self) {
+    return schema._self.map((field) => renderField(field, "_self"));
+  }
+
+  // CASE 2: Repeatable education verification
+  if (schema.repeatable && schema.fields) {
+    return (
+      <>
+        {(checkDetails?.[checkSlug]?.entries || [{}]).map((entry, idx) => (
+          <Box
+            key={idx}
+            sx={{ p: 2, border: "1px solid #ccc", borderRadius: 2, mb: 2 }}
+          >
+            {schema.fields.map((field) =>
+              renderField(field, `entry_${idx}`, idx)
+            )}
+          </Box>
+        ))}
+
+        <Button
+          variant="outlined"
+          sx={{ mt: 1 }}
+          onClick={() => {
+            setCheckDetails((prev) => {
+              const next = { ...prev };
+              if (!next[checkSlug]) next[checkSlug] = {};
+              next[checkSlug].entries = [
+                ...(next[checkSlug].entries || []),
+                {},
+              ];
+              return next;
+            });
+          }}
+        >
+          Add Another Degree
+        </Button>
+      </>
+    );
+  }
+
+  // CASE 3: Section-based (current / permanent / previous)
+  return (
+    <>
+      {Object.keys(schema).map((section) => (
+        <Box key={section} sx={{ mb: 2 }}>
+          <Typography sx={{ fontWeight: "bold", mb: 1, mt: 2 }}>
+            {section[0].toUpperCase() + section.slice(1)}
+          </Typography>
+
+          {schema[section].map((field) =>
+            renderField(field, section)
+          )}
+        </Box>
+      ))}
+    </>
+  );
+};
+
 
   if (loading) {
     return (
