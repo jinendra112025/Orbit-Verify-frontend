@@ -870,7 +870,7 @@ const AdminCaseDetailPage = () => {
                   onClick={async () => {
                     try {
                       const res = await fetch(
-                        `https://doc-verify-server.onrender.com/api/documents/${
+                        `https://orbit-verify-server.onrender.com/api/documents/${
                           doc._id
                         }/download?token=${localStorage.getItem("token")}`
                       );
