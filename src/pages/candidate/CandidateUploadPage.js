@@ -9,25 +9,26 @@ import {
   Alert,
   Divider,
   TextField,
+  RadioGroup,
+  Radio,
+  FormControlLabel,
+  IconButton,
 } from "@mui/material";
-import { CheckCircle as CheckCircleIcon } from "@mui/icons-material";
+import { CheckCircle as CheckCircleIcon, Delete as DeleteIcon } from "@mui/icons-material";
 import { useParams } from "react-router-dom";
 import api from "../../services/api";
 
-// Helper function to create a "slug" from a check name
+const normalizeKey = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^\w_]/g, "");
+
 const toCheckSlug = (check) => {
   if (!check) return "";
-  if (typeof check === "string")
-    return check
-      .toLowerCase()
-      .replace(/\s+/g, "_")
-      .replace(/[^\w_]/g, "");
-  if (check.slug) return check.slug;
-  if (check.name)
-    return check.name
-      .toLowerCase()
-      .replace(/\s+/g, "_")
-      .replace(/[^\w_]/g, "");
+  if (typeof check === "string") return normalizeKey(check);
+  if (check.slug) return normalizeKey(check.slug);
+  if (check.name) return normalizeKey(check.name);
   return "";
 };
 
@@ -40,76 +41,250 @@ const CandidateUploadPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
 
-  // NEW STATE: To hold all form data (text fields and files)
+  // holds all text inputs + per-section data
+  // shape: { [checkSlug]: { [sectionKey]: { fieldName: value, _file?: File } } }
   const [checkDetails, setCheckDetails] = useState({});
 
+  // fetch token details
   useEffect(() => {
     const fetchDetails = async () => {
-      if (token) {
-        try {
-          const response = await api.get(`/public/request-details/${token}`);
-          setRequestDetails(response.data);
-        } catch (error) {
-          setError(
-            error.response?.data?.msg ||
-              "This upload link is invalid or has expired."
-          );
-        } finally {
-          setLoading(false);
-        }
+      if (!token) return;
+      try {
+        const resp = await api.get(`/public/request-details/${token}`);
+        setRequestDetails(resp.data);
+      } catch (err) {
+        setError(
+          err.response?.data?.msg ||
+            "This upload link is invalid or has expired."
+        );
+      } finally {
+        setLoading(false);
       }
     };
     fetchDetails();
   }, [token]);
 
-  // NEW HANDLERS: To manage changes in the dynamic form fields
-  const handleDetailChange = (check, subKey = "_self", field, value) => {
-    const key = toCheckSlug(check);
+  // -----------------------
+  // helpers to mutate state
+  // -----------------------
+  const handleDetailChange = (checkSlug, sectionKey, field, value) => {
+    const section = sectionKey == null ? "_self" : sectionKey;
     setCheckDetails((prev) => {
       const next = { ...prev };
-      if (!next[key]) next[key] = {};
-      if (!next[key][subKey]) next[key][subKey] = {};
-      next[key][subKey] = { ...next[key][subKey], [field]: value };
+      if (!next[checkSlug]) next[checkSlug] = {};
+      if (!next[checkSlug][section]) next[checkSlug][section] = {};
+      next[checkSlug][section] = {
+        ...next[checkSlug][section],
+        [field]: value,
+      };
       return next;
     });
   };
 
-  const handleDetailFile = (check, subKey = "_self", file) => {
-    const key = toCheckSlug(check);
+  const handleDetailFile = (checkSlug, sectionKey, file) => {
+    const section = sectionKey == null ? "_self" : sectionKey;
     setCheckDetails((prev) => {
       const next = { ...prev };
-      if (!next[key]) next[key] = {};
-      if (!next[key][subKey]) next[key][subKey] = {};
-      next[key][subKey] = { ...next[key][subKey], _file: file };
+      if (!next[checkSlug]) next[checkSlug] = {};
+      if (!next[checkSlug][section]) next[checkSlug][section] = {};
+      next[checkSlug][section] = {
+        ...next[checkSlug][section],
+        _file: file,
+      };
       return next;
     });
   };
 
-  // NEW SUBMIT HANDLER: To send both text data and files
+  const removeDetailFile = (checkSlug, sectionKey) => {
+    const section = sectionKey == null ? "_self" : sectionKey;
+    setCheckDetails((prev) => {
+      const next = { ...prev };
+      if (!next[checkSlug] || !next[checkSlug][section]) return prev;
+      const sectionObj = { ...next[checkSlug][section] };
+      delete sectionObj._file;
+      next[checkSlug][section] = sectionObj;
+      return next;
+    });
+  };
+
+  // -----------------------
+  // field renderer
+  // -----------------------
+  const renderField = (checkSlug, sectionKey, field) => {
+    const section = sectionKey == null ? "_self" : sectionKey;
+    const sectionData = checkDetails?.[checkSlug]?.[section] || {};
+    const value = sectionData[field.name] || "";
+
+    // FILE
+    if (field.type === "file") {
+      const currentFile = sectionData._file;
+      return (
+        <Box key={field.name} sx={{ mt: 1 }}>
+          <Button variant="outlined" component="label">
+            {field.label || "Upload Document"}
+            <input
+              type="file"
+              hidden
+              onChange={(e) =>
+                handleDetailFile(
+                  checkSlug,
+                  section,
+                  e.target.files && e.target.files[0]
+                )
+              }
+            />
+          </Button>
+          {currentFile && (
+            <Box
+              sx={{ display: "inline-flex", alignItems: "center", ml: 1 }}
+            >
+              <Typography variant="caption">{currentFile.name}</Typography>
+              <IconButton
+                size="small"
+                onClick={() => removeDetailFile(checkSlug, section)}
+              >
+                <DeleteIcon fontSize="inherit" />
+              </IconButton>
+            </Box>
+          )}
+        </Box>
+      );
+    }
+
+    // RADIO (for panel / gap type etc.)
+    if (field.type === "radio" && Array.isArray(field.options)) {
+      return (
+        <Box key={field.name} sx={{ mt: 1 }}>
+          <Typography variant="body2" sx={{ mb: 0.5 }}>
+            {field.label}
+          </Typography>
+          <RadioGroup
+            row
+            value={value || field.options[0] || ""}
+            onChange={(e) =>
+              handleDetailChange(checkSlug, section, field.name, e.target.value)
+            }
+          >
+            {field.options.map((opt) => (
+              <FormControlLabel
+                key={opt}
+                value={opt}
+                control={<Radio size="small" />}
+                label={opt}
+              />
+            ))}
+          </RadioGroup>
+        </Box>
+      );
+    }
+
+    // DATE
+    if (field.type === "date" || field.name === "dob") {
+      return (
+        <TextField
+          key={field.name}
+          fullWidth
+          size="small"
+          sx={{ mt: 1 }}
+          label={field.label}
+          type="date"
+          InputLabelProps={{ shrink: true }}
+          value={value || ""}
+          onChange={(e) =>
+            handleDetailChange(checkSlug, section, field.name, e.target.value)
+          }
+        />
+      );
+    }
+
+    // default text
+    return (
+      <TextField
+        key={field.name}
+        fullWidth
+        size="small"
+        sx={{ mt: 1 }}
+        label={field.label}
+        value={value}
+        onChange={(e) =>
+          handleDetailChange(checkSlug, section, field.name, e.target.value)
+        }
+      />
+    );
+  };
+
+  // -----------------------
+  // Check renderer (uses same idea as CreateCasePage)
+  // -----------------------
+  const renderCheckFields = (check) => {
+    const schema = check.schema || {};
+    const checkSlug = toCheckSlug(check);
+
+    // top-level keys except meta and _self are treated as sections
+    const sectionKeys = Object.keys(schema).filter(
+      (k) => !["_self", "_meta", "meta"].includes(k)
+    );
+
+    return (
+      <>
+        {sectionKeys.map((sectionKey) => (
+          <Box key={sectionKey} sx={{ mb: 2 }}>
+            <Typography
+              variant="subtitle2"
+              sx={{ fontWeight: 600, mb: 1 }}
+            >
+              {sectionKey}
+            </Typography>
+            {Array.isArray(schema[sectionKey])
+              ? schema[sectionKey].map((field) =>
+                  renderField(checkSlug, sectionKey, field)
+                )
+              : null}
+          </Box>
+        ))}
+
+        {/* Unsectioned fields */}
+        {Array.isArray(schema._self) && schema._self.length > 0 && (
+          <Box sx={{ mb: 1 }}>
+            {schema._self.map((field) =>
+              renderField(checkSlug, "_self", field)
+            )}
+          </Box>
+        )}
+      </>
+    );
+  };
+
+  // -----------------------
+  // Submit handler
+  // -----------------------
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setError("");
     setMessage("");
 
-    const formData = new FormData();
-
-    // 1. Append the text field data as a JSON string
-    formData.append("checkDetails", JSON.stringify(checkDetails));
-
-    // 2. Append all the files
-    for (const checkSlug in checkDetails) {
-      const details = checkDetails[checkSlug];
-      if (details._self && details._self._file) {
-        formData.append(checkSlug, details._self._file);
-      }
-    }
-
     try {
-      const response = await api.post(`/public/upload/${token}`, formData, {
+      const formData = new FormData();
+
+      // send text details
+      formData.append("checkDetails", JSON.stringify(checkDetails));
+
+      // send ONE file per check (first found in any section) – keeps backend simple
+      Object.entries(checkDetails).forEach(([checkSlug, sections]) => {
+        let appended = false;
+        Object.values(sections || {}).forEach((section) => {
+          if (!section || !section._file || appended) return;
+          formData.append(checkSlug, section._file);
+          appended = true;
+        });
+      });
+
+      const resp = await api.post(`/public/upload/${token}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setMessage(response.data.msg);
+
+      setMessage(resp.data.msg || "Information submitted successfully.");
       setIsSubmitted(true);
     } catch (err) {
       setError(
@@ -121,157 +296,22 @@ const CandidateUploadPage = () => {
     }
   };
 
-  // NEW RENDER FUNCTION: Renders form fields based on a schema
-const renderCheckFields = (check) => {
-  const schema = check.schema;
-  const checkSlug = toCheckSlug(check);
-
-  if (!schema) return <p>No details required for this check.</p>;
-
-  // Helper to render a single field
-  const renderField = (field, subKey = "_self", index = null) => {
-    const keyPrefix = index !== null ? `${field.name}_${index}` : field.name;
-
-    // TEXT INPUT
-    if (field.type === "text" || field.type === "date") {
-      return (
-        <TextField
-          key={keyPrefix}
-          fullWidth
-          size="small"
-          sx={{ my: 1 }}
-          label={field.label}
-          type={field.type === "date" ? "date" : "text"}
-          InputLabelProps={field.type === "date" ? { shrink: true } : {}}
-          value={
-            checkDetails?.[checkSlug]?.[subKey]?.[keyPrefix] || ""
-          }
-          onChange={(e) =>
-            handleDetailChange(check, subKey, keyPrefix, e.target.value)
-          }
-        />
-      );
-    }
-
-    // RADIO GROUP
-    if (field.type === "radio") {
-      return (
-        <Box key={keyPrefix} sx={{ my: 1 }}>
-          <Typography>{field.label}</Typography>
-          <Box sx={{ display: "flex", gap: 2, my: 1 }}>
-            {field.options.map((opt) => (
-              <label key={opt}>
-                <input
-                  type="radio"
-                  name={`${checkSlug}_${subKey}_${field.name}`}
-                  value={opt}
-                  checked={
-                    checkDetails?.[checkSlug]?.[subKey]?.[field.name] === opt
-                  }
-                  onChange={() =>
-                    handleDetailChange(check, subKey, field.name, opt)
-                  }
-                />
-                &nbsp;{opt}
-              </label>
-            ))}
-          </Box>
-        </Box>
-      );
-    }
-
-    // FILE UPLOAD
-    if (field.type === "file") {
-      return (
-        <Box key={keyPrefix} sx={{ mt: 1 }}>
-          <Button variant="outlined" component="label">
-            {field.label}
-            <input
-              type="file"
-              hidden
-              onChange={(e) =>
-                handleDetailFile(check, subKey, e.target.files[0])
-              }
-            />
-          </Button>
-
-          {checkDetails?.[checkSlug]?.[subKey]?._file && (
-            <Typography variant="caption" sx={{ ml: 2 }}>
-              {checkDetails?.[checkSlug]?.[subKey]?._file?.name}
-            </Typography>
-          )}
-        </Box>
-      );
-    }
-
-    return null;
-  };
-
-  // CASE 1: Simple _self schema
-  if (schema._self) {
-    return schema._self.map((field) => renderField(field, "_self"));
-  }
-
-  // CASE 2: Repeatable education verification
-  if (schema.repeatable && schema.fields) {
-    return (
-      <>
-        {(checkDetails?.[checkSlug]?.entries || [{}]).map((entry, idx) => (
-          <Box
-            key={idx}
-            sx={{ p: 2, border: "1px solid #ccc", borderRadius: 2, mb: 2 }}
-          >
-            {schema.fields.map((field) =>
-              renderField(field, `entry_${idx}`, idx)
-            )}
-          </Box>
-        ))}
-
-        <Button
-          variant="outlined"
-          sx={{ mt: 1 }}
-          onClick={() => {
-            setCheckDetails((prev) => {
-              const next = { ...prev };
-              if (!next[checkSlug]) next[checkSlug] = {};
-              next[checkSlug].entries = [
-                ...(next[checkSlug].entries || []),
-                {},
-              ];
-              return next;
-            });
-          }}
-        >
-          Add Another Degree
-        </Button>
-      </>
-    );
-  }
-
-  // CASE 3: Section-based (current / permanent / previous)
-  return (
-    <>
-      {Object.keys(schema).map((section) => (
-        <Box key={section} sx={{ mb: 2 }}>
-          <Typography sx={{ fontWeight: "bold", mb: 1, mt: 2 }}>
-            {section[0].toUpperCase() + section.slice(1)}
-          </Typography>
-
-          {schema[section].map((field) =>
-            renderField(field, section)
-          )}
-        </Box>
-      ))}
-    </>
-  );
-};
-
-
+  // -----------------------
+  // UI states
+  // -----------------------
   if (loading) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", mt: 5 }}>
         <CircularProgress />
       </Box>
+    );
+  }
+
+  if (error && !requestDetails) {
+    return (
+      <Container maxWidth="sm" sx={{ mt: 5 }}>
+        <Alert severity="error">{error}</Alert>
+      </Container>
     );
   }
 
@@ -291,7 +331,7 @@ const renderCheckFields = (check) => {
           <Typography variant="h5" gutterBottom>
             Submission Successful!
           </Typography>
-          <Typography color="textSecondary">
+          <Typography color="text.secondary">
             {message || "Thank you. Your information has been submitted."}
           </Typography>
         </Paper>
@@ -299,15 +339,9 @@ const renderCheckFields = (check) => {
     );
   }
 
-  if (error && !requestDetails) {
-    return (
-      <Container maxWidth="sm" sx={{ mt: 5 }}>
-        <Alert severity="error">{error}</Alert>
-      </Container>
-    );
-  }
-
   if (!requestDetails) return null;
+
+  const { candidateName, clientName, requestedChecks = [] } = requestDetails;
 
   return (
     <Container maxWidth="md" sx={{ mt: 5, mb: 5 }}>
@@ -320,12 +354,13 @@ const renderCheckFields = (check) => {
           Secure Document Upload
         </Typography>
         <Typography color="text.secondary" align="center">
-          For {requestDetails.clientName} Background Verification
+          For {clientName} Background Verification
         </Typography>
         <Divider sx={{ my: 3 }} />
+
         <Box sx={{ my: 2, textAlign: "left" }}>
           <Typography variant="body1" sx={{ mb: 1 }}>
-            Hello {requestDetails.candidateName},
+            Hello {candidateName},
           </Typography>
           <Typography color="text.secondary">
             Please provide the following details and documents for your
@@ -333,15 +368,14 @@ const renderCheckFields = (check) => {
           </Typography>
         </Box>
 
-        {requestDetails.requestedChecks.map((check) => (
+        {requestedChecks.map((check) => (
           <Box
-            key={check.slug}
+            key={check.slug || check.name}
             sx={{ mt: 3, p: 2, border: "1px solid #e0e0e0", borderRadius: 2 }}
           >
             <Typography variant="h6" component="p" sx={{ mb: 1 }}>
               {check.name}
             </Typography>
-            {/* This function will now render the dynamic form */}
             {renderCheckFields(check)}
           </Box>
         ))}
