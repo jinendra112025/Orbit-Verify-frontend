@@ -924,29 +924,158 @@ const AdminCaseDetailPage = () => {
 
     // --- EDUCATION (This check uses a separate top-level field `caseDetail.education`) ---
     if (key.includes("education")) {
-      const edu = caseDetail.education || [];
-      if (!edu.length && !uploads.length)
+      // OLD CODE - DELETE THIS:
+      // const edu = caseDetail.education || [];
+
+      // NEW CODE - Use check.params.list instead:
+      const educationList = params.list || [];
+
+      // Fallback: also check old structure for backward compatibility
+      const legacyEdu = caseDetail.education || [];
+
+      // Combine both sources (prefer params.list)
+      const allEducation = educationList.length > 0 ? educationList : legacyEdu;
+
+      if (!allEducation.length && !uploads.length) {
         return (
           <Typography color="text.secondary">
             No education details submitted.
           </Typography>
         );
+      }
+
       return (
         <>
-          {edu.map((e, i) => (
+          {allEducation.map((e, i) => (
             <Box
               key={i}
-              sx={{ mb: 1, p: 1, bgcolor: "grey.50", borderRadius: 1 }}
+              sx={{
+                mb: 2,
+                p: 1.5,
+                bgcolor: "grey.50",
+                borderRadius: 1,
+                border: "1px solid #e0e0e0",
+              }}
             >
-              <Typography variant="body2">
-                <strong>{e.university || "—"}</strong>
+              {/* Entry Header */}
+              <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
+                <Chip
+                  label={`Entry #${i + 1}`}
+                  size="small"
+                  sx={{ mr: 1, backgroundColor: "#e3f2fd" }}
+                />
+                {e.providedBy === "candidate" && (
+                  <Chip
+                    label="Candidate Provided"
+                    size="small"
+                    color="success"
+                    variant="outlined"
+                  />
+                )}
+              </Box>
+
+              {/* Education Details */}
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                {e.university || "—"}
               </Typography>
-              <Typography variant="body2">
+              <Typography variant="body2" color="text.secondary">
                 {e.degree || "—"} {e.year ? `(${e.year})` : ""}
               </Typography>
+
+              {/* Timestamp */}
+              {e.providedAt && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", mt: 0.5 }}
+                >
+                  Submitted: {new Date(e.providedAt).toLocaleString()}
+                </Typography>
+              )}
+
+              {/* Documents for this specific entry */}
+              {e.documents && e.documents.length > 0 && (
+                <Box sx={{ mt: 1, pt: 1, borderTop: "1px solid #e0e0e0" }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontWeight: 600 }}
+                  >
+                    📎 Documents for this entry:
+                  </Typography>
+                  <List dense sx={{ mt: 0.5 }}>
+                    {e.documents.map((docId, docIdx) => {
+                      // Find the document object from caseDetail.documents
+                      const doc = (caseDetail.documents || []).find(
+                        (d) => String(d._id || d.id) === String(docId)
+                      );
+
+                      if (!doc) return null;
+
+                      return (
+                        <ListItem
+                          key={docIdx}
+                          button
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(
+                                `https://orbit-verify-server.onrender.com/api/documents/${
+                                  doc._id
+                                }/download?token=${localStorage.getItem(
+                                  "token"
+                                )}`
+                              );
+                              const data = await res.json();
+                              if (data.url) {
+                                window.open(data.url, "_blank");
+                              } else {
+                                alert("Unable to fetch download link");
+                              }
+                            } catch (err) {
+                              alert("Download failed");
+                              console.error(err);
+                            }
+                          }}
+                          sx={{
+                            py: 0.5,
+                            px: 1,
+                            backgroundColor: "white",
+                            border: "1px solid #e0e0e0",
+                            borderRadius: 0.5,
+                            mb: 0.5,
+                            "&:hover": {
+                              backgroundColor: "#f5f5f5",
+                            },
+                          }}
+                        >
+                          <ListItemText
+                            primary={
+                              doc.originalFilename || doc._id || "Document"
+                            }
+                            primaryTypographyProps={{ variant: "body2" }}
+                          />
+                        </ListItem>
+                      );
+                    })}
+                  </List>
+                </Box>
+              )}
             </Box>
           ))}
-          <DocList docs={uploads} />
+
+          {/* General education documents not linked to specific entries */}
+          {uploads.length > 0 && (
+            <Box sx={{ mt: 2 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: "block", fontWeight: 600, mb: 1 }}
+              >
+                📎 Additional Education Documents:
+              </Typography>
+              <DocList docs={uploads} />
+            </Box>
+          )}
         </>
       );
     }

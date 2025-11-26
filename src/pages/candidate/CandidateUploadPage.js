@@ -14,7 +14,11 @@ import {
   FormControlLabel,
   IconButton,
 } from "@mui/material";
-import { CheckCircle as CheckCircleIcon, Delete as DeleteIcon } from "@mui/icons-material";
+import { 
+  CheckCircle as CheckCircleIcon, 
+  Delete as DeleteIcon,
+  Add as AddIcon 
+} from "@mui/icons-material";
 import { useParams } from "react-router-dom";
 import api from "../../services/api";
 
@@ -45,6 +49,11 @@ const CandidateUploadPage = () => {
   // shape: { [checkSlug]: { [sectionKey]: { fieldName: value, _file?: File } } }
   const [checkDetails, setCheckDetails] = useState({});
 
+  // NEW: Special state for education entries (array)
+  const [educationEntries, setEducationEntries] = useState([
+    { university: "", degree: "", year: "", _file: null }
+  ]);
+
   // fetch token details
   useEffect(() => {
     const fetchDetails = async () => {
@@ -52,6 +61,14 @@ const CandidateUploadPage = () => {
       try {
         const resp = await api.get(`/public/request-details/${token}`);
         setRequestDetails(resp.data);
+        console.log('[CandidateUploadPage] Received checks:', 
+          resp.data.requestedChecks?.map(c => ({
+            name: c.name,
+            slug: c.slug,
+            hasSchema: !!c.schema,
+            schemaKeys: Object.keys(c.schema || {})
+          }))
+        );
       } catch (err) {
         setError(
           err.response?.data?.msg ||
@@ -105,6 +122,44 @@ const CandidateUploadPage = () => {
       next[checkSlug][section] = sectionObj;
       return next;
     });
+  };
+
+  // -----------------------
+  // NEW: Education handlers
+  // -----------------------
+  const addEducationEntry = () => {
+    setEducationEntries([
+      ...educationEntries,
+      { university: "", degree: "", year: "", _file: null }
+    ]);
+  };
+
+  const removeEducationEntry = (index) => {
+    if (educationEntries.length === 1) {
+      // Keep at least one entry but clear it
+      setEducationEntries([{ university: "", degree: "", year: "", _file: null }]);
+    } else {
+      const updated = educationEntries.filter((_, idx) => idx !== index);
+      setEducationEntries(updated);
+    }
+  };
+
+  const handleEducationChange = (index, field, value) => {
+    const updated = [...educationEntries];
+    updated[index][field] = value;
+    setEducationEntries(updated);
+  };
+
+  const handleEducationFile = (index, file) => {
+    const updated = [...educationEntries];
+    updated[index]._file = file;
+    setEducationEntries(updated);
+  };
+
+  const removeEducationFile = (index) => {
+    const updated = [...educationEntries];
+    updated[index]._file = null;
+    setEducationEntries(updated);
   };
 
   // -----------------------
@@ -214,12 +269,113 @@ const CandidateUploadPage = () => {
   };
 
   // -----------------------
-  // Check renderer (uses same idea as CreateCasePage)
+  // Check renderer (MODIFIED for education)
   // -----------------------
   const renderCheckFields = (check) => {
     const schema = check.schema || {};
     const checkSlug = toCheckSlug(check);
+    const checkName = check.name || "";
+    
+    // SPECIAL CASE: Education Verification
+    const isEducation = normalizeKey(checkName) === "education_verification";
 
+    if (isEducation) {
+      return (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
+            Education Details
+          </Typography>
+
+          {educationEntries.map((entry, index) => (
+            <Paper
+              key={index}
+              elevation={1}
+              sx={{
+                p: 2,
+                mb: 2,
+                backgroundColor: "#f9f9f9",
+                border: "1px solid #e0e0e0",
+                borderRadius: 1,
+              }}
+            >
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Education Entry #{index + 1}
+                </Typography>
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={() => removeEducationEntry(index)}
+                  disabled={educationEntries.length === 1}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Box>
+
+              <TextField
+                fullWidth
+                size="small"
+                label="University/Institution"
+                value={entry.university}
+                onChange={(e) => handleEducationChange(index, "university", e.target.value)}
+                sx={{ mb: 1 }}
+              />
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Degree/Qualification"
+                value={entry.degree}
+                onChange={(e) => handleEducationChange(index, "degree", e.target.value)}
+                sx={{ mb: 1 }}
+              />
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Year of Passing"
+                value={entry.year}
+                onChange={(e) => handleEducationChange(index, "year", e.target.value)}
+                sx={{ mb: 1 }}
+              />
+
+              <Box sx={{ mt: 1 }}>
+                <Button variant="outlined" component="label" size="small">
+                  {entry._file ? "Change Document" : "Upload Certificate"}
+                  <input
+                    type="file"
+                    hidden
+                    onChange={(e) => handleEducationFile(index, e.target.files[0])}
+                  />
+                </Button>
+                {entry._file && (
+                  <Box sx={{ display: "inline-flex", alignItems: "center", ml: 1 }}>
+                    <Typography variant="caption">{entry._file.name}</Typography>
+                    <IconButton
+                      size="small"
+                      onClick={() => removeEducationFile(index)}
+                    >
+                      <DeleteIcon fontSize="inherit" />
+                    </IconButton>
+                  </Box>
+                )}
+              </Box>
+            </Paper>
+          ))}
+
+          <Button
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={addEducationEntry}
+            sx={{ mt: 1 }}
+          >
+            Add Another Education Entry
+          </Button>
+        </Box>
+      );
+    }
+
+    // For all other checks, use the original rendering logic
     // top-level keys except meta and _self are treated as sections
     const sectionKeys = Object.keys(schema).filter(
       (k) => !["_self", "_meta", "meta"].includes(k)
@@ -256,7 +412,7 @@ const CandidateUploadPage = () => {
   };
 
   // -----------------------
-  // Submit handler
+  // Submit handler (MODIFIED)
   // -----------------------
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -267,10 +423,37 @@ const CandidateUploadPage = () => {
     try {
       const formData = new FormData();
 
-      // send text details
-      formData.append("checkDetails", JSON.stringify(checkDetails));
+      // Make a copy of checkDetails
+      const detailsToSend = { ...checkDetails };
 
-      // send ONE file per check (first found in any section) – keeps backend simple
+      // SPECIAL HANDLING: Convert education entries to the format backend expects
+      const hasEducation = requestDetails?.requestedChecks?.some(
+        check => normalizeKey(check.name || check.slug) === "education_verification"
+      );
+
+      if (hasEducation) {
+        // Filter out empty entries
+        const validEntries = educationEntries.filter(
+          entry => entry.university || entry.degree || entry.year
+        );
+
+        if (validEntries.length > 0) {
+          detailsToSend.education_verification = {
+            _self: validEntries.map(entry => ({
+              university: entry.university,
+              degree: entry.degree,
+              year: entry.year
+            }))
+          };
+        }
+
+        console.log('[CandidateUploadPage] Education entries:', validEntries);
+      }
+
+      // Send text details
+      formData.append("checkDetails", JSON.stringify(detailsToSend));
+
+      // Send files for regular checks (ONE file per check)
       Object.entries(checkDetails).forEach(([checkSlug, sections]) => {
         let appended = false;
         Object.values(sections || {}).forEach((section) => {
@@ -280,6 +463,18 @@ const CandidateUploadPage = () => {
         });
       });
 
+      // Send education files separately (multiple files possible)
+      if (hasEducation) {
+        educationEntries.forEach((entry, index) => {
+          if (entry._file) {
+            // Append with index so backend can match it
+            formData.append(`education_verification_${index}`, entry._file);
+          }
+        });
+      }
+
+      console.log('[CandidateUploadPage] Submitting to /public/upload/' + token);
+
       const resp = await api.post(`/public/upload/${token}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -287,6 +482,7 @@ const CandidateUploadPage = () => {
       setMessage(resp.data.msg || "Information submitted successfully.");
       setIsSubmitted(true);
     } catch (err) {
+      console.error('[CandidateUploadPage] Submission error:', err);
       setError(
         err.response?.data?.msg ||
           "Submission failed. The link may be expired or files are too large."
