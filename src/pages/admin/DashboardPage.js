@@ -29,8 +29,13 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  Snackbar,
 } from "@mui/material";
-import { Clear as ClearIcon, Search as SearchIcon } from "@mui/icons-material";
+import {
+  Clear as ClearIcon,
+  Search as SearchIcon,
+  Send as SendIcon,
+} from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import EditCaseModal from "../../components/EditCaseModal";
@@ -78,6 +83,15 @@ const DashboardPage = () => {
   const [openEditModal, setOpenEditModal] = useState(false);
   const [caseToEdit, setCaseToEdit] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
+
+  const [openResendDialog, setOpenResendDialog] = useState(false);
+  const [caseToResend, setCaseToResend] = useState(null);
+  const [isResending, setIsResending] = useState(false);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
 
   const navigate = useNavigate();
 
@@ -255,15 +269,25 @@ const DashboardPage = () => {
     setIsDeleting(true);
     try {
       await api.delete(`/cases/${caseToDelete._id}`);
-      // Remove the case from the local state to update UI instantly
       setAllCases((prevCases) =>
         prevCases.filter((c) => c._id !== caseToDelete._id)
       );
+      // ✅ Show success message after successful deletion
+      setSnackbar({
+        open: true,
+        message: "Case deleted successfully!",
+        severity: "success",
+      });
     } catch (err) {
       console.error("Failed to delete case:", err);
-      setErrorMsg(
-        `Failed to delete case. ${err?.response?.data?.msg || err.message}`
-      );
+      // ✅ Show error message when deletion fails
+      setSnackbar({
+        open: true,
+        message: `Failed to delete case. ${
+          err?.response?.data?.msg || err.message
+        }`,
+        severity: "error",
+      });
     } finally {
       setIsDeleting(false);
       handleCloseDeleteDialog();
@@ -281,36 +305,83 @@ const DashboardPage = () => {
   };
 
   const handleUpdateCase = async (updatedCaseData) => {
-    // This now receives an object with _id, candidateInfo, and checks
-    setIsUpdating(true); // Assuming you have an isUpdating state for the dashboard button as well
+    setIsUpdating(true);
     setErrorMsg(""); // Clear previous errors
 
     try {
       const payload = {
         candidateInfo: updatedCaseData.candidateInfo,
-        // Stringify the checks array because our backend expects it as a string from FormData
         checks: JSON.stringify(updatedCaseData.checks),
-        // Important: if you have file uploads for these checks,
-        // you'd need to convert this to a FormData object and append files.
-        // For now, we're assuming only text fields are being updated.
       };
 
       const response = await api.put(`/cases/${updatedCaseData._id}`, payload);
-
-      // Update the case in the main list to show changes immediately
       setAllCases((prevCases) =>
         prevCases.map((c) => (c._id === response.data._id ? response.data : c))
       );
 
+      // ✅ Show success message AFTER successful update
+      setSnackbar({
+        open: true,
+        message: "Case updated successfully!",
+        severity: "success",
+      });
       handleCloseEditModal();
     } catch (err) {
       console.error("Failed to update case:", err);
-      setErrorMsg(
-        `Failed to update case. ${err?.response?.data?.msg || err.message}`
-      );
+      // ✅ Show error in snackbar
+      setSnackbar({
+        open: true,
+        message: `Failed to update case. ${
+          err?.response?.data?.msg || err.message
+        }`,
+        severity: "error",
+      });
     } finally {
       setIsUpdating(false);
     }
+  };
+
+  const handleOpenResendDialog = (caseItem) => {
+    setCaseToResend(caseItem);
+    setOpenResendDialog(true);
+  };
+
+  const handleCloseResendDialog = () => {
+    setOpenResendDialog(false);
+    setCaseToResend(null);
+  };
+
+  const handleConfirmResend = async () => {
+    if (!caseToResend) return;
+    setIsResending(true);
+
+    try {
+      const response = await api.post("/cases/resend-link", {
+        caseId: caseToResend._id,
+      });
+
+      setSnackbar({
+        open: true,
+        message: response.data.msg || "Upload link resent successfully!",
+        severity: "success",
+      });
+    } catch (err) {
+      console.error("Failed to resend link:", err);
+      setSnackbar({
+        open: true,
+        message: `Failed to resend link. ${
+          err?.response?.data?.msg || err.message
+        }`,
+        severity: "error",
+      });
+    } finally {
+      setIsResending(false);
+      handleCloseResendDialog();
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
   };
 
   const statusFilters = [
@@ -458,63 +529,85 @@ const DashboardPage = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {paginatedCases.map((row) => (
-                <TableRow key={row._id || row.id}>
-                  <TableCell>
-                    {row.candidateInfo?.candidateName ??
-                      row.candidateName ??
-                      "N/A"}
-                  </TableCell>
-                  <TableCell>
-                    {row.clientOrganization?.name ||
-                      row.clientOrganization?.companyName ||
-                      "N/A"}
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={row.status}
-                      color={getStatusColor(row.status)}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {row.createdAt
-                      ? new Date(row.createdAt).toLocaleDateString()
-                      : "—"}
-                  </TableCell>
-                  <TableCell sx={{ display: "flex", gap: 1 }}>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      onClick={() =>
-                        navigate(`/admin/case/${row._id || row.id}`)
-                      }
-                    >
-                      View/Manage
-                    </Button>
+              {paginatedCases.map((row) => {
+                const isPending = getStatusKey(row.status) === "Pending";
 
-                    <Button
-                      variant="contained"
-                      size="small"
-                      color="info"
-                      startIcon={<EditIcon />}
-                      onClick={() => handleOpenEditModal(row)}
+                return (
+                  <TableRow key={row._id || row.id}>
+                    <TableCell>
+                      {row.candidateInfo?.candidateName ??
+                        row.candidateName ??
+                        "N/A"}
+                    </TableCell>
+                    <TableCell>
+                      {row.clientOrganization?.name ||
+                        row.clientOrganization?.companyName ||
+                        "N/A"}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={row.status}
+                        color={getStatusColor(row.status)}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {row.createdAt
+                        ? new Date(row.createdAt).toLocaleDateString()
+                        : "—"}
+                    </TableCell>
+                    <TableCell
+                      sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}
                     >
-                      Edit
-                    </Button>
+                      <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() =>
+                          navigate(`/admin/case/${row._id || row.id}`)
+                        }
+                      >
+                        View/Manage
+                      </Button>
 
-                    {/* --- NEW: Delete Button --- */}
-                    <Button
-                      variant="contained"
-                      size="small"
-                      color="error"
-                      onClick={() => handleOpenDeleteDialog(row)}
-                    >
-                      Delete
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                      {/* --- NEW: Resend Link Button (only for Pending cases) --- */}
+                      {isPending && (
+                        <Button
+                          variant="contained"
+                          size="small"
+                          color="secondary"
+                          startIcon={<SendIcon />}
+                          onClick={() => handleOpenResendDialog(row)}
+                          sx={{
+                            backgroundColor: "#9c27b0",
+                            "&:hover": { backgroundColor: "#7b1fa2" },
+                          }}
+                        >
+                          Resend Link
+                        </Button>
+                      )}
+
+                      <Button
+                        variant="contained"
+                        size="small"
+                        color="info"
+                        startIcon={<EditIcon />}
+                        onClick={() => handleOpenEditModal(row)}
+                      >
+                        Edit
+                      </Button>
+
+                      <Button
+                        variant="contained"
+                        size="small"
+                        color="error"
+                        onClick={() => handleOpenDeleteDialog(row)}
+                      >
+                        Delete
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               {paginatedCases.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} align="center">
@@ -569,12 +662,61 @@ const DashboardPage = () => {
           </Button>
         </DialogActions>
       </Dialog>
+      <Dialog open={openResendDialog} onClose={handleCloseResendDialog}>
+        <DialogTitle>Resend Upload Link</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to resend the document upload link to{" "}
+            <strong>{caseToResend?.candidateInfo?.candidateName}</strong> at{" "}
+            <strong>{caseToResend?.candidateInfo?.email}</strong>?
+            <br />
+            <br />
+            This will generate a new link valid for 3 days and invalidate any
+            previous link.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={handleCloseResendDialog}
+            sx={{ borderColor: "rgba(0, 0, 0, 0.23)", color: "black" }}
+            variant="outlined"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirmResend}
+            color="secondary"
+            variant="contained"
+            disabled={isResending}
+            sx={{
+              backgroundColor: "#9c27b0",
+              "&:hover": { backgroundColor: "#7b1fa2" },
+            }}
+          >
+            {isResending ? <CircularProgress size={24} /> : "Resend Link"}
+          </Button>
+        </DialogActions>
+      </Dialog>
       <EditCaseModal
         open={openEditModal}
         onClose={handleCloseEditModal}
         caseData={caseToEdit}
         onUpdate={handleUpdateCase}
       />
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbar.severity}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
