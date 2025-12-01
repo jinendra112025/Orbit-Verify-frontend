@@ -27,6 +27,8 @@ import {
 import DownloadIcon from "@mui/icons-material/Download";
 import DeleteIcon from "@mui/icons-material/Delete";
 import api from "../../services/api";
+import UploadCandidateDocumentsModal from "../../components/UploadCandidateDocumentsModal";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 
 const getStatusColor = (status) => {
   switch (status) {
@@ -197,6 +199,7 @@ const AdminCaseDetailPage = () => {
   const [stagedVerifiedData, setStagedVerifiedData] = useState({});
   const [stagedComments, setStagedComments] = useState({});
   const [stagedVerifiedUploads, setStagedVerifiedUploads] = useState({}); // { checkIndex: [File | {persisted, doc}] }
+  const [openUploadModal, setOpenUploadModal] = useState(false);
 
   // fetch case & prepare initial state
   useEffect(() => {
@@ -835,6 +838,16 @@ const AdminCaseDetailPage = () => {
     } finally {
       setIsUpdating(false);
     }
+  };
+
+  const handleUploadSuccess = (updatedCase) => {
+    // Update case detail with new data
+    setCaseDetail(updatedCase);
+    setCaseChecks(updatedCase.checks || []);
+    setMessage("Documents uploaded successfully!");
+
+    // Refresh the page data
+    window.location.reload(); // Simple refresh, or implement a more elegant state update
   };
 
   const renderCandidateSubmission = (check) => {
@@ -1505,12 +1518,29 @@ const AdminCaseDetailPage = () => {
             {isUpdating ? "Generating..." : "Download PDF Report"}
           </Button>
 
+          <Button
+            variant="contained"
+            color="secondary"
+            startIcon={<CloudUploadIcon />}
+            fullWidth
+            onClick={() => setOpenUploadModal(true)}
+            sx={{ mt: 2 }}
+          >
+            Upload Documents
+          </Button>
+
           {message && (
             <Alert severity="info" sx={{ mt: 2 }}>
               {message}
             </Alert>
           )}
         </Paper>
+        <UploadCandidateDocumentsModal
+          open={openUploadModal}
+          onClose={() => setOpenUploadModal(false)}
+          caseData={caseDetail}
+          onUploadSuccess={handleUploadSuccess}
+        />
       </Grid>
 
       {/* Right: checks as cards */}
