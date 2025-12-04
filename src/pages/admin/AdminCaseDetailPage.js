@@ -279,29 +279,57 @@ const AdminCaseDetailPage = () => {
         (uploadsNormalized || []).forEach((up) => {
           const fk = (up.fieldKey || "").toLowerCase();
           if (!fk.startsWith("verified_")) return;
-          // fk is like verified_address_verification or verified_credit_history...
-          const key = fk.replace("verified_", "");
-          // try to find matching checkIndex by comparing normalized checkType
+
+          // Extract parts: verified_employment_verification_current or verified_address_verification_permanent
+          const parts = fk.replace("verified_", "").split("_");
+          const subSectionKey = parts[parts.length - 1]; // 'current', 'permanent', '_default', etc.
+          const checkTypeFromKey = parts.slice(0, -1).join("_"); // everything except the last part
+
+          // Try to find matching checkIndex by comparing normalized checkType
           let matchedIndex = -1;
           (data.checks || []).forEach((ch, idx) => {
             const ctNorm = normalizeKey(ch.checkType || "");
             if (!ctNorm) return;
             if (
-              ctNorm.includes(normalizeKey(key)) ||
-              normalizeKey(key).includes(ctNorm)
+              ctNorm.includes(normalizeKey(checkTypeFromKey)) ||
+              normalizeKey(checkTypeFromKey).includes(ctNorm)
             ) {
               matchedIndex = idx;
             }
           });
+
           if (matchedIndex !== -1) {
-            initialStagedUploads[matchedIndex] =
-              initialStagedUploads[matchedIndex] || [];
-            // persisted style entry:
-            if (up.document)
-              initialStagedUploads[matchedIndex].push({
-                persisted: true,
-                doc: up.document,
-              });
+            // Initialize nested structure for multi-section checks
+            const checkType = data.checks[matchedIndex]?.checkType || "";
+            const isMultiSection = multiSectionChecks.includes(checkType);
+
+            if (isMultiSection) {
+              // Use nested structure: { current: [...], previous: [...] }
+              initialStagedUploads[matchedIndex] =
+                initialStagedUploads[matchedIndex] || {};
+              initialStagedUploads[matchedIndex][subSectionKey] =
+                initialStagedUploads[matchedIndex][subSectionKey] || [];
+
+              if (up.document) {
+                initialStagedUploads[matchedIndex][subSectionKey].push({
+                  persisted: true,
+                  doc: up.document,
+                });
+              }
+            } else {
+              // Use flat structure with _default key for single-section checks
+              initialStagedUploads[matchedIndex] =
+                initialStagedUploads[matchedIndex] || {};
+              initialStagedUploads[matchedIndex]._default =
+                initialStagedUploads[matchedIndex]._default || [];
+
+              if (up.document) {
+                initialStagedUploads[matchedIndex]._default.push({
+                  persisted: true,
+                  doc: up.document,
+                });
+              }
+            }
           }
         });
 
@@ -309,15 +337,32 @@ const AdminCaseDetailPage = () => {
         const initialVerifiedData = {};
         const initialComments = {};
         (data.checks || []).forEach((check, idx) => {
-          // Initialize with nested objects to store sub-section data
+          const checkType = check.checkType || "";
+          const isMultiSection = multiSectionChecks.includes(checkType);
+
+          // Initialize verifiedData
           initialVerifiedData[idx] =
             check.verifiedData && typeof check.verifiedData === "object"
               ? check.verifiedData
               : {};
-          initialComments[idx] =
-            check.comments && typeof check.comments === "object"
-              ? check.comments
-              : {};
+
+          // Initialize comments based on check type
+          if (isMultiSection) {
+            // Multi-section checks: keep as object
+            initialComments[idx] =
+              check.comments && typeof check.comments === "object"
+                ? check.comments
+                : {};
+          } else {
+            // Single-section checks: wrap string in _default key
+            if (typeof check.comments === "string") {
+              initialComments[idx] = { _default: check.comments };
+            } else if (check.comments && typeof check.comments === "object") {
+              initialComments[idx] = check.comments;
+            } else {
+              initialComments[idx] = { _default: "" };
+            }
+          }
         });
 
         setCaseDetail({ ...data, uploadsNormalized });
@@ -553,27 +598,292 @@ const AdminCaseDetailPage = () => {
     );
   };
 
-const handleSaveCheck = async (checkIndex) => {
-  setIsUpdating(true);
-  try {
-    const fd = new FormData();
-    fd.append("caseId", id);
+  const handleSaveCheck = async (checkIndex) => {
+    setIsUpdating(true);
+    try {
+      const fd = new FormData();
+      fd.append("caseId", id);
 
-    // Build updated checks payload
-    const checksPayload = caseChecks.map((check, idx) => {
-      if (idx === checkIndex) {
+      // Build updated checks payload
+      const checksPayload = caseChecks.map((check, idx) => {
+        if (idx === checkIndex) {
+          const checkType = check.checkType || "";
+          const isMultiSection = multiSectionChecks.includes(checkType);
+
+          // For multi-section checks, comments should be an object
+          // For single-section checks, extract the string comment
+          let commentsToSave;
+          if (isMultiSection) {
+            // Keep as nested object: { current: "...", previous: "..." }
+            commentsToSave = stagedComments[checkIndex] || {};
+          } else {
+            // Extract the string comment from _default key
+            const commentObj = stagedComments[checkIndex] || {};
+            commentsToSave =
+              typeof commentObj === "string"
+                ? commentObj
+                : commentObj._default || commentObj.value || "";
+          }
+
+          return {
+            ...check,
+            status: caseChecks[checkIndex]?.status || "Pending",
+            verifiedData: stagedVerifiedData[checkIndex] || {},
+            comments: commentsToSave,
+          };
+        }
+        return check;
+      });
+      fd.append("checks", JSON.stringify(checksPayload));
+
+      // Handle verified file uploads (dedupe by name+size)
+      const verifiedFileKeys = [];
+      const uploadsForCheck = stagedVerifiedUploads[checkIndex] || {}; // This is an object e.g., { current: [File], previous: [File] }
+      const seenFiles = new Set();
+
+      // A single, correct loop structure
+      Object.entries(uploadsForCheck).forEach(([subSectionKey, files]) => {
+        (files || []).forEach((file) => {
+          if (!file || file.persisted) return; // Skip persisted files
+
+          const key = `${file.name || ""}::${file.size || 0}`;
+          if (seenFiles.has(key)) return; // Skip duplicates
+          seenFiles.add(key);
+
+          fd.append("verifiedFiles", file);
+          verifiedFileKeys.push({
+            filename: file.name,
+            checkIndex: Number(checkIndex), // Ensure it's a number
+            checkType: caseChecks[checkIndex]?.checkType || "",
+            subSectionKey: subSectionKey,
+          });
+        });
+      });
+
+      fd.append("verifiedFileKeys", JSON.stringify(verifiedFileKeys));
+
+      // API call
+      const resp = await api.put(`/cases/${id}`, fd);
+      const updated = resp.data || {};
+
+      // Merge case detail safely
+      setCaseDetail((prev) => ({
+        ...prev,
+        ...updated,
+        uploadsNormalized: prev?.uploadsNormalized || updated.uploadsNormalized,
+      }));
+
+      // ---- Preserve display names when merging updated checks ----
+      const updatedChecksFromServer = Array.isArray(updated.checks)
+        ? updated.checks
+        : [];
+
+      setCaseChecks((prevChecks = []) => {
+        const prevMap = new Map();
+        (prevChecks || []).forEach((c, i) => {
+          const raw =
+            c._displayName ||
+            c.displayName ||
+            c.checkType ||
+            c._normalized ||
+            "";
+          const nk = normalizeKey(raw) || `__prev_${i}`;
+          prevMap.set(nk, { ...c });
+        });
+
+        updatedChecksFromServer.forEach((uc, uidx) => {
+          const raw =
+            uc._displayName ||
+            uc.displayName ||
+            uc.checkType ||
+            uc._normalized ||
+            "";
+          const nk = normalizeKey(raw) || `__srv_${uidx}`;
+          const prev = prevMap.get(nk) || {};
+          const preservedDisplay =
+            prev._displayName ||
+            uc._displayName ||
+            uc.displayName ||
+            humanizeCheckType(uc.checkType);
+          prevMap.set(nk, {
+            ...prev,
+            ...uc,
+            _displayName: preservedDisplay,
+            _normalized:
+              normalizeKey(
+                uc.checkType || uc._normalized || preservedDisplay
+              ) || `k_${uidx}`,
+          });
+        });
+
+        const result = [];
+        const seen = new Set();
+
+        (prevChecks || []).forEach((c, i) => {
+          const raw =
+            c._displayName ||
+            c.displayName ||
+            c.checkType ||
+            c._normalized ||
+            "";
+          const nk = normalizeKey(raw) || `__prev_${i}`;
+          if (prevMap.has(nk) && !seen.has(nk)) {
+            result.push(prevMap.get(nk));
+            seen.add(nk);
+          }
+        });
+
+        updatedChecksFromServer.forEach((uc, uidx) => {
+          const raw =
+            uc._displayName ||
+            uc.displayName ||
+            uc.checkType ||
+            uc._normalized ||
+            "";
+          const nk = normalizeKey(raw) || `__srv_${uidx}`;
+          if (prevMap.has(nk) && !seen.has(nk)) {
+            result.push(prevMap.get(nk));
+            seen.add(nk);
+          }
+        });
+
+        return result;
+      });
+
+      // ---- Find the saved check by normalized key ----
+      const prevCheck = (caseChecks || [])[checkIndex] || {};
+      const prevKeyRaw =
+        prevCheck._displayName ||
+        prevCheck.displayName ||
+        prevCheck.checkType ||
+        prevCheck._normalized ||
+        "";
+      const prevNormalizedKey = normalizeKey(prevKeyRaw) || null;
+
+      let savedCheck = null;
+      if (prevNormalizedKey) {
+        savedCheck =
+          (updated.checks || []).find((ch) => {
+            const chKeyRaw =
+              ch._displayName ||
+              ch.displayName ||
+              ch.checkType ||
+              ch._normalized ||
+              "";
+            return normalizeKey(chKeyRaw) === prevNormalizedKey;
+          }) || null;
+      }
+      if (!savedCheck && (updated.checks || []).length === 1) {
+        savedCheck = updated.checks[0];
+      }
+
+      // ---- Update staged data for saved check ----
+      if (savedCheck) {
+        let vd = {};
+        if (
+          savedCheck.verifiedData &&
+          typeof savedCheck.verifiedData === "object"
+        ) {
+          vd = { ...savedCheck.verifiedData };
+        } else if (typeof savedCheck.verifiedData === "string") {
+          try {
+            vd = JSON.parse(savedCheck.verifiedData);
+          } catch {
+            vd = { value: savedCheck.verifiedData };
+          }
+        }
+
+        // Handle comments properly based on check type
+        const checkType = savedCheck.checkType || "";
+        const isMultiSection = multiSectionChecks.includes(checkType);
+
+        let commentsToSet;
+        if (isMultiSection) {
+          // Keep as object for multi-section
+          commentsToSet =
+            typeof savedCheck.comments === "object" ? savedCheck.comments : {};
+        } else {
+          // Keep as object with _default key for consistency
+          commentsToSet = {
+            _default:
+              typeof savedCheck.comments === "string"
+                ? savedCheck.comments
+                : "",
+          };
+        }
+
+        setStagedVerifiedData((prev) => ({ ...prev, [checkIndex]: vd }));
+        setStagedComments((prev) => ({ ...prev, [checkIndex]: commentsToSet }));
+      }
+
+      // ---- FIX: Update staged uploads properly for multi-section checks ----
+      const newUploads = {};
+      (updated.uploads || []).forEach((u) => {
+        const fk = (u.fieldKey || "").toString();
+        if (fk.startsWith("verified_")) {
+          // Extract parts: verified_employment_verification_current or verified_address_verification_permanent
+          const parts = fk.replace("verified_", "").split("_");
+          const subSectionKey = parts[parts.length - 1]; // 'current', 'permanent', etc.
+
+          const checkTypeFromKey = parts.slice(0, -1).join("_"); // everything except the last part
+
+          const idxFound = (updated.checks || []).findIndex((ch) => {
+            const chVariants = resolveKeyVariants(ch.checkType || "");
+            return chVariants.some((v) =>
+              normalizeKey(v).includes(normalizeKey(checkTypeFromKey))
+            );
+          });
+
+          if (idxFound >= 0) {
+            // Initialize nested structure if needed
+            newUploads[idxFound] = newUploads[idxFound] || {};
+            newUploads[idxFound][subSectionKey] =
+              newUploads[idxFound][subSectionKey] || [];
+
+            if (u.documentId) {
+              let docObj = u.documentId;
+              if (typeof docObj === "string" || typeof docObj === "number") {
+                docObj = (updated.documents || []).find(
+                  (d) => String(d._id || d.id) === String(u.documentId)
+                ) || { _id: u.documentId };
+              }
+              newUploads[idxFound][subSectionKey].push({
+                persisted: true,
+                doc: docObj,
+              });
+            }
+          }
+        }
+      });
+
+      setStagedVerifiedUploads((prev) => ({
+        ...prev,
+        [checkIndex]: newUploads[checkIndex] || {},
+      }));
+
+      setMessage("Check saved successfully");
+    } catch (err) {
+      console.error("Failed to save check:", err);
+      setMessage("Failed to save check");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleSaveAll = async () => {
+    setIsUpdating(true);
+    try {
+      const fd = new FormData();
+
+      const checksPayload = (caseChecks || []).map((check, idx) => {
         const checkType = check.checkType || "";
         const isMultiSection = multiSectionChecks.includes(checkType);
 
-        // For multi-section checks, comments should be an object
-        // For single-section checks, extract the string comment
         let commentsToSave;
         if (isMultiSection) {
-          // Keep as nested object: { current: "...", previous: "..." }
-          commentsToSave = stagedComments[checkIndex] || {};
+          commentsToSave = stagedComments[idx] || {};
         } else {
-          // Extract the string comment from _default key
-          const commentObj = stagedComments[checkIndex] || {};
+          const commentObj = stagedComments[idx] || {};
           commentsToSave =
             typeof commentObj === "string"
               ? commentObj
@@ -582,329 +892,76 @@ const handleSaveCheck = async (checkIndex) => {
 
         return {
           ...check,
-          status: caseChecks[checkIndex]?.status || "Pending",
-          verifiedData: stagedVerifiedData[checkIndex] || {},
           comments: commentsToSave,
+          verifiedData: stagedVerifiedData[idx] ?? check.verifiedData ?? {},
         };
-      }
-      return check;
-    });
-    fd.append("checks", JSON.stringify(checksPayload));
-
-    // Handle verified file uploads (dedupe by name+size)
-    const verifiedFileKeys = [];
-    const uploadsForCheck = stagedVerifiedUploads[checkIndex] || {}; // This is an object e.g., { current: [File], previous: [File] }
-    const seenFiles = new Set();
-
-    // A single, correct loop structure
-    Object.entries(uploadsForCheck).forEach(([subSectionKey, files]) => {
-      (files || []).forEach((file) => {
-        if (!file || file.persisted) return; // Skip persisted files
-
-        const key = `${file.name || ""}::${file.size || 0}`;
-        if (seenFiles.has(key)) return; // Skip duplicates
-        seenFiles.add(key);
-
-        fd.append("verifiedFiles", file);
-        verifiedFileKeys.push({
-          filename: file.name,
-          checkIndex: Number(checkIndex), // Ensure it's a number
-          checkType: caseChecks[checkIndex]?.checkType || "",
-          subSectionKey: subSectionKey,
-        });
-      });
-    });
-
-    fd.append("verifiedFileKeys", JSON.stringify(verifiedFileKeys));
-
-    // API call
-    const resp = await api.put(`/cases/${id}`, fd);
-    const updated = resp.data || {};
-
-    // Merge case detail safely
-    setCaseDetail((prev) => ({
-      ...prev,
-      ...updated,
-      uploadsNormalized: prev?.uploadsNormalized || updated.uploadsNormalized,
-    }));
-
-    // ---- Preserve display names when merging updated checks ----
-    const updatedChecksFromServer = Array.isArray(updated.checks)
-      ? updated.checks
-      : [];
-
-    setCaseChecks((prevChecks = []) => {
-      const prevMap = new Map();
-      (prevChecks || []).forEach((c, i) => {
-        const raw =
-          c._displayName ||
-          c.displayName ||
-          c.checkType ||
-          c._normalized ||
-          "";
-        const nk = normalizeKey(raw) || `__prev_${i}`;
-        prevMap.set(nk, { ...c });
       });
 
-      updatedChecksFromServer.forEach((uc, uidx) => {
-        const raw =
-          uc._displayName ||
-          uc.displayName ||
-          uc.checkType ||
-          uc._normalized ||
-          "";
-        const nk = normalizeKey(raw) || `__srv_${uidx}`;
-        const prev = prevMap.get(nk) || {};
-        const preservedDisplay =
-          prev._displayName ||
-          uc._displayName ||
-          uc.displayName ||
-          humanizeCheckType(uc.checkType);
-        prevMap.set(nk, {
-          ...prev,
-          ...uc,
-          _displayName: preservedDisplay,
-          _normalized:
-            normalizeKey(
-              uc.checkType || uc._normalized || preservedDisplay
-            ) || `k_${uidx}`,
-        });
-      });
+      fd.append("checks", JSON.stringify(checksPayload));
 
-      const result = [];
-      const seen = new Set();
+      // attach all staged verified files - handle nested structure
+      const verifiedFileKeys = [];
+      const seenAll = new Set();
 
-      (prevChecks || []).forEach((c, i) => {
-        const raw =
-          c._displayName ||
-          c.displayName ||
-          c.checkType ||
-          c._normalized ||
-          "";
-        const nk = normalizeKey(raw) || `__prev_${i}`;
-        if (prevMap.has(nk) && !seen.has(nk)) {
-          result.push(prevMap.get(nk));
-          seen.add(nk);
-        }
-      });
+      Object.entries(stagedVerifiedUploads).forEach(
+        ([idx, uploadsForCheck]) => {
+          // Check if it's an object with subsection keys or an array (for backward compatibility)
+          if (Array.isArray(uploadsForCheck)) {
+            // Old format: just an array
+            (uploadsForCheck || []).forEach((it) => {
+              if (!it || it.persisted) return;
+              const k = `${it.name || ""}::${it.size || 0}`;
+              if (seenAll.has(k)) return;
+              seenAll.add(k);
 
-      updatedChecksFromServer.forEach((uc, uidx) => {
-        const raw =
-          uc._displayName ||
-          uc.displayName ||
-          uc.checkType ||
-          uc._normalized ||
-          "";
-        const nk = normalizeKey(raw) || `__srv_${uidx}`;
-        if (prevMap.has(nk) && !seen.has(nk)) {
-          result.push(prevMap.get(nk));
-          seen.add(nk);
-        }
-      });
+              fd.append("verifiedFiles", it);
+              verifiedFileKeys.push({
+                filename: it.name,
+                checkIndex: Number(idx),
+                checkType: caseChecks[Number(idx)]?.checkType || "",
+              });
+            });
+          } else if (
+            typeof uploadsForCheck === "object" &&
+            uploadsForCheck !== null
+          ) {
+            // New format: object with subsection keys like { current: [...], previous: [...] }
+            Object.entries(uploadsForCheck).forEach(
+              ([subSectionKey, files]) => {
+                (files || []).forEach((it) => {
+                  if (!it || it.persisted) return;
+                  const k = `${it.name || ""}::${it.size || 0}`;
+                  if (seenAll.has(k)) return;
+                  seenAll.add(k);
 
-      return result;
-    });
-
-    // ---- Find the saved check by normalized key ----
-    const prevCheck = (caseChecks || [])[checkIndex] || {};
-    const prevKeyRaw =
-      prevCheck._displayName ||
-      prevCheck.displayName ||
-      prevCheck.checkType ||
-      prevCheck._normalized ||
-      "";
-    const prevNormalizedKey = normalizeKey(prevKeyRaw) || null;
-
-    let savedCheck = null;
-    if (prevNormalizedKey) {
-      savedCheck =
-        (updated.checks || []).find((ch) => {
-          const chKeyRaw =
-            ch._displayName ||
-            ch.displayName ||
-            ch.checkType ||
-            ch._normalized ||
-            "";
-          return normalizeKey(chKeyRaw) === prevNormalizedKey;
-        }) || null;
-    }
-    if (!savedCheck && (updated.checks || []).length === 1) {
-      savedCheck = updated.checks[0];
-    }
-
-    // ---- Update staged data for saved check ----
-    if (savedCheck) {
-      let vd = {};
-      if (
-        savedCheck.verifiedData &&
-        typeof savedCheck.verifiedData === "object"
-      ) {
-        vd = { ...savedCheck.verifiedData };
-      } else if (typeof savedCheck.verifiedData === "string") {
-        try {
-          vd = JSON.parse(savedCheck.verifiedData);
-        } catch {
-          vd = { value: savedCheck.verifiedData };
-        }
-      }
-
-      // Handle comments properly based on check type
-      const checkType = savedCheck.checkType || "";
-      const isMultiSection = multiSectionChecks.includes(checkType);
-
-      let commentsToSet;
-      if (isMultiSection) {
-        // Keep as object for multi-section
-        commentsToSet =
-          typeof savedCheck.comments === "object" ? savedCheck.comments : {};
-      } else {
-        // Keep as object with _default key for consistency
-        commentsToSet = {
-          _default:
-            typeof savedCheck.comments === "string" ? savedCheck.comments : "",
-        };
-      }
-
-      setStagedVerifiedData((prev) => ({ ...prev, [checkIndex]: vd }));
-      setStagedComments((prev) => ({ ...prev, [checkIndex]: commentsToSet }));
-    }
-
-    // ---- FIX: Update staged uploads properly for multi-section checks ----
-    const newUploads = {};
-    (updated.uploads || []).forEach((u) => {
-      const fk = (u.fieldKey || "").toString();
-      if (fk.startsWith("verified_")) {
-        // Extract parts: verified_employment_verification_current or verified_address_verification_permanent
-        const parts = fk.replace("verified_", "").split("_");
-        const subSectionKey = parts[parts.length - 1]; // 'current', 'permanent', etc.
-        
-        const checkTypeFromKey = parts.slice(0, -1).join("_"); // everything except the last part
-
-        const idxFound = (updated.checks || []).findIndex((ch) => {
-          const chVariants = resolveKeyVariants(ch.checkType || "");
-          return chVariants.some((v) =>
-            normalizeKey(v).includes(normalizeKey(checkTypeFromKey))
-          );
-        });
-
-        if (idxFound >= 0) {
-          // Initialize nested structure if needed
-          newUploads[idxFound] = newUploads[idxFound] || {};
-          newUploads[idxFound][subSectionKey] = newUploads[idxFound][subSectionKey] || [];
-          
-          if (u.documentId) {
-            let docObj = u.documentId;
-            if (typeof docObj === "string" || typeof docObj === "number") {
-              docObj =
-                (updated.documents || []).find(
-                  (d) => String(d._id || d.id) === String(u.documentId)
-                ) || { _id: u.documentId };
-            }
-            newUploads[idxFound][subSectionKey].push({ persisted: true, doc: docObj });
+                  fd.append("verifiedFiles", it);
+                  verifiedFileKeys.push({
+                    filename: it.name,
+                    checkIndex: Number(idx),
+                    checkType: caseChecks[Number(idx)]?.checkType || "",
+                    subSectionKey: subSectionKey,
+                  });
+                });
+              }
+            );
           }
         }
-      }
-    });
+      );
 
-    setStagedVerifiedUploads((prev) => ({
-      ...prev,
-      [checkIndex]: newUploads[checkIndex] || {},
-    }));
+      fd.append("verifiedFileKeys", JSON.stringify(verifiedFileKeys));
 
-    setMessage("Check saved successfully");
-  } catch (err) {
-    console.error("Failed to save check:", err);
-    setMessage("Failed to save check");
-  } finally {
-    setIsUpdating(false);
-  }
-};
+      const resp = await api.put(`/cases/${id}`, fd);
+      const updated = resp.data;
 
-const handleSaveAll = async () => {
-  setIsUpdating(true);
-  try {
-    const fd = new FormData();
-
-    const checksPayload = (caseChecks || []).map((check, idx) => {
-      const checkType = check.checkType || "";
-      const isMultiSection = multiSectionChecks.includes(checkType);
-
-      let commentsToSave;
-      if (isMultiSection) {
-        commentsToSave = stagedComments[idx] || {};
-      } else {
-        const commentObj = stagedComments[idx] || {};
-        commentsToSave =
-          typeof commentObj === "string"
-            ? commentObj
-            : commentObj._default || commentObj.value || "";
-      }
-
-      return {
-        ...check,
-        comments: commentsToSave,
-        verifiedData: stagedVerifiedData[idx] ?? check.verifiedData ?? {},
-      };
-    });
-
-    fd.append("checks", JSON.stringify(checksPayload));
-
-    // attach all staged verified files - handle nested structure
-    const verifiedFileKeys = [];
-    const seenAll = new Set();
-    
-    Object.entries(stagedVerifiedUploads).forEach(([idx, uploadsForCheck]) => {
-      // Check if it's an object with subsection keys or an array (for backward compatibility)
-      if (Array.isArray(uploadsForCheck)) {
-        // Old format: just an array
-        (uploadsForCheck || []).forEach((it) => {
-          if (!it || it.persisted) return;
-          const k = `${it.name || ""}::${it.size || 0}`;
-          if (seenAll.has(k)) return;
-          seenAll.add(k);
-
-          fd.append("verifiedFiles", it);
-          verifiedFileKeys.push({
-            filename: it.name,
-            checkIndex: Number(idx),
-            checkType: caseChecks[Number(idx)]?.checkType || "",
-          });
-        });
-      } else if (typeof uploadsForCheck === "object" && uploadsForCheck !== null) {
-        // New format: object with subsection keys like { current: [...], previous: [...] }
-        Object.entries(uploadsForCheck).forEach(([subSectionKey, files]) => {
-          (files || []).forEach((it) => {
-            if (!it || it.persisted) return;
-            const k = `${it.name || ""}::${it.size || 0}`;
-            if (seenAll.has(k)) return;
-            seenAll.add(k);
-
-            fd.append("verifiedFiles", it);
-            verifiedFileKeys.push({
-              filename: it.name,
-              checkIndex: Number(idx),
-              checkType: caseChecks[Number(idx)]?.checkType || "",
-              subSectionKey: subSectionKey,
-            });
-          });
-        });
-      }
-    });
-    
-    fd.append("verifiedFileKeys", JSON.stringify(verifiedFileKeys));
-
-    const resp = await api.put(`/cases/${id}`, fd);
-    const updated = resp.data;
-
-    setMessage("All changes saved successfully");
-    navigate("/admin");
-  } catch (err) {
-    console.error("Save all failed:", err);
-    setMessage("Failed to save changes");
-  } finally {
-    setIsUpdating(false);
-  }
-};
+      setMessage("All changes saved successfully");
+      navigate("/admin");
+    } catch (err) {
+      console.error("Save all failed:", err);
+      setMessage("Failed to save changes");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const handleUploadSuccess = (updatedCase) => {
     // Update case detail with new data
@@ -1658,13 +1715,33 @@ const handleSaveAll = async () => {
                     variant="outlined"
                     color="secondary"
                     onClick={() => {
-                      // re-sync staged changes for this check from the latest caseChecks / caseDetail
                       const latestCheck =
                         (caseChecks && caseChecks[idx]) || null;
-                      const latestComments = latestCheck
-                        ? latestCheck.comments || ""
-                        : caseDetail?.checks?.[idx]?.comments || "";
-                      // verifiedData might be object or JSON string
+
+                      // Handle comments
+                      const checkType = latestCheck?.checkType || "";
+                      const isMultiSection =
+                        multiSectionChecks.includes(checkType);
+
+                      let latestComments;
+                      if (isMultiSection) {
+                        latestComments =
+                          latestCheck?.comments &&
+                          typeof latestCheck.comments === "object"
+                            ? latestCheck.comments
+                            : {};
+                      } else {
+                        const comments =
+                          latestCheck?.comments ||
+                          caseDetail?.checks?.[idx]?.comments ||
+                          "";
+                        latestComments = {
+                          _default:
+                            typeof comments === "string" ? comments : "",
+                        };
+                      }
+
+                      // Handle verifiedData
                       let latestVD = {};
                       if (latestCheck && latestCheck.verifiedData) {
                         if (typeof latestCheck.verifiedData === "string") {
@@ -1698,14 +1775,34 @@ const handleSaveAll = async () => {
                         [idx]: latestVD,
                       }));
 
-                      // reset staged files for this check to whatever persisted ones exist in stagedVerifiedUploads
+                      // Reset staged files - handle nested structure properly
                       setStagedVerifiedUploads((prev) => {
                         const next = { ...prev };
-                        const persisted =
-                          (next[idx] || []).filter(
-                            (it) => it && it.persisted
-                          ) || [];
-                        next[idx] = persisted;
+                        const currentUploads = next[idx] || {};
+
+                        if (
+                          isMultiSection &&
+                          typeof currentUploads === "object" &&
+                          !Array.isArray(currentUploads)
+                        ) {
+                          // Multi-section: filter persisted files per subsection
+                          const resetUploads = {};
+                          Object.entries(currentUploads).forEach(
+                            ([subKey, files]) => {
+                              const persisted = (files || []).filter(
+                                (it) => it && it.persisted
+                              );
+                              if (persisted.length > 0) {
+                                resetUploads[subKey] = persisted;
+                              }
+                            }
+                          );
+                          next[idx] = resetUploads;
+                        } else {
+                          // Single-section: reset to empty with _default key
+                          next[idx] = { _default: [] };
+                        }
+
                         return next;
                       });
 
