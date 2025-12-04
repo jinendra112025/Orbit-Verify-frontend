@@ -1,13 +1,5 @@
 import { jsPDF } from "jspdf";
 
-/**
- * generatePdfReport(caseDetail)
- *
- * - First page: Executive Summary table (one row per check)
- * - Each subsequent page: one check, table-style details
- * - Only prints fields that exist (Employment: prints Current and/or Previous only if present)
- * - Excludes detail1/detail2/detail3 from admin verified output
- */
 export const generatePdfReport = (caseDetail) => {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();

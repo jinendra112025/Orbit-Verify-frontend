@@ -14,10 +14,10 @@ import {
   FormControlLabel,
   IconButton,
 } from "@mui/material";
-import { 
-  CheckCircle as CheckCircleIcon, 
+import {
+  CheckCircle as CheckCircleIcon,
   Delete as DeleteIcon,
-  Add as AddIcon 
+  Add as AddIcon,
 } from "@mui/icons-material";
 import { useParams } from "react-router-dom";
 import api from "../../services/api";
@@ -51,7 +51,7 @@ const CandidateUploadPage = () => {
 
   // NEW: Special state for education entries (array)
   const [educationEntries, setEducationEntries] = useState([
-    { university: "", degree: "", year: "", _file: null }
+    { university: "", degree: "", year: "", _file: null },
   ]);
 
   // fetch token details
@@ -61,12 +61,13 @@ const CandidateUploadPage = () => {
       try {
         const resp = await api.get(`/public/request-details/${token}`);
         setRequestDetails(resp.data);
-        console.log('[CandidateUploadPage] Received checks:', 
-          resp.data.requestedChecks?.map(c => ({
+        console.log(
+          "[CandidateUploadPage] Received checks:",
+          resp.data.requestedChecks?.map((c) => ({
             name: c.name,
             slug: c.slug,
             hasSchema: !!c.schema,
-            schemaKeys: Object.keys(c.schema || {})
+            schemaKeys: Object.keys(c.schema || {}),
           }))
         );
       } catch (err) {
@@ -130,14 +131,16 @@ const CandidateUploadPage = () => {
   const addEducationEntry = () => {
     setEducationEntries([
       ...educationEntries,
-      { university: "", degree: "", year: "", _file: null }
+      { university: "", degree: "", year: "", _file: null },
     ]);
   };
 
   const removeEducationEntry = (index) => {
     if (educationEntries.length === 1) {
       // Keep at least one entry but clear it
-      setEducationEntries([{ university: "", degree: "", year: "", _file: null }]);
+      setEducationEntries([
+        { university: "", degree: "", year: "", _file: null },
+      ]);
     } else {
       const updated = educationEntries.filter((_, idx) => idx !== index);
       setEducationEntries(updated);
@@ -190,9 +193,7 @@ const CandidateUploadPage = () => {
             />
           </Button>
           {currentFile && (
-            <Box
-              sx={{ display: "inline-flex", alignItems: "center", ml: 1 }}
-            >
+            <Box sx={{ display: "inline-flex", alignItems: "center", ml: 1 }}>
               <Typography variant="caption">{currentFile.name}</Typography>
               <IconButton
                 size="small"
@@ -275,7 +276,7 @@ const CandidateUploadPage = () => {
     const schema = check.schema || {};
     const checkSlug = toCheckSlug(check);
     const checkName = check.name || "";
-    
+
     // SPECIAL CASE: Education Verification
     const isEducation = normalizeKey(checkName) === "education_verification";
 
@@ -298,7 +299,14 @@ const CandidateUploadPage = () => {
                 borderRadius: 1,
               }}
             >
-              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  mb: 1,
+                }}
+              >
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
                   Education Entry #{index + 1}
                 </Typography>
@@ -317,7 +325,9 @@ const CandidateUploadPage = () => {
                 size="small"
                 label="University/Institution"
                 value={entry.university}
-                onChange={(e) => handleEducationChange(index, "university", e.target.value)}
+                onChange={(e) =>
+                  handleEducationChange(index, "university", e.target.value)
+                }
                 sx={{ mb: 1 }}
               />
 
@@ -326,7 +336,9 @@ const CandidateUploadPage = () => {
                 size="small"
                 label="Degree/Qualification"
                 value={entry.degree}
-                onChange={(e) => handleEducationChange(index, "degree", e.target.value)}
+                onChange={(e) =>
+                  handleEducationChange(index, "degree", e.target.value)
+                }
                 sx={{ mb: 1 }}
               />
 
@@ -335,7 +347,9 @@ const CandidateUploadPage = () => {
                 size="small"
                 label="Year of Passing"
                 value={entry.year}
-                onChange={(e) => handleEducationChange(index, "year", e.target.value)}
+                onChange={(e) =>
+                  handleEducationChange(index, "year", e.target.value)
+                }
                 sx={{ mb: 1 }}
               />
 
@@ -345,12 +359,18 @@ const CandidateUploadPage = () => {
                   <input
                     type="file"
                     hidden
-                    onChange={(e) => handleEducationFile(index, e.target.files[0])}
+                    onChange={(e) =>
+                      handleEducationFile(index, e.target.files[0])
+                    }
                   />
                 </Button>
                 {entry._file && (
-                  <Box sx={{ display: "inline-flex", alignItems: "center", ml: 1 }}>
-                    <Typography variant="caption">{entry._file.name}</Typography>
+                  <Box
+                    sx={{ display: "inline-flex", alignItems: "center", ml: 1 }}
+                  >
+                    <Typography variant="caption">
+                      {entry._file.name}
+                    </Typography>
                     <IconButton
                       size="small"
                       onClick={() => removeEducationFile(index)}
@@ -385,10 +405,7 @@ const CandidateUploadPage = () => {
       <>
         {sectionKeys.map((sectionKey) => (
           <Box key={sectionKey} sx={{ mb: 2 }}>
-            <Typography
-              variant="subtitle2"
-              sx={{ fontWeight: 600, mb: 1 }}
-            >
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
               {sectionKey}
             </Typography>
             {Array.isArray(schema[sectionKey])
@@ -428,26 +445,27 @@ const CandidateUploadPage = () => {
 
       // SPECIAL HANDLING: Convert education entries to the format backend expects
       const hasEducation = requestDetails?.requestedChecks?.some(
-        check => normalizeKey(check.name || check.slug) === "education_verification"
+        (check) =>
+          normalizeKey(check.name || check.slug) === "education_verification"
       );
 
       if (hasEducation) {
         // Filter out empty entries
         const validEntries = educationEntries.filter(
-          entry => entry.university || entry.degree || entry.year
+          (entry) => entry.university || entry.degree || entry.year
         );
 
         if (validEntries.length > 0) {
           detailsToSend.education_verification = {
-            _self: validEntries.map(entry => ({
+            _self: validEntries.map((entry) => ({
               university: entry.university,
               degree: entry.degree,
-              year: entry.year
-            }))
+              year: entry.year,
+            })),
           };
         }
 
-        console.log('[CandidateUploadPage] Education entries:', validEntries);
+        console.log("[CandidateUploadPage] Education entries:", validEntries);
       }
 
       // Send text details
@@ -473,7 +491,9 @@ const CandidateUploadPage = () => {
         });
       }
 
-      console.log('[CandidateUploadPage] Submitting to /public/upload/' + token);
+      console.log(
+        "[CandidateUploadPage] Submitting to /public/upload/" + token
+      );
 
       const resp = await api.post(`/public/upload/${token}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -482,7 +502,7 @@ const CandidateUploadPage = () => {
       setMessage(resp.data.msg || "Information submitted successfully.");
       setIsSubmitted(true);
     } catch (err) {
-      console.error('[CandidateUploadPage] Submission error:', err);
+      console.error("[CandidateUploadPage] Submission error:", err);
       setError(
         err.response?.data?.msg ||
           "Submission failed. The link may be expired or files are too large."

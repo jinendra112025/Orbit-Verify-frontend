@@ -841,58 +841,82 @@ const CreateCasePage = () => {
 
         {/* Credit, Global, UAN, Drug handled similarly to before but use slug keys */}
         {isCredit &&
-          fields.filter((f) => f.name !== "aadhaar" && f.name !== "pan").map((fld) => {
-            if (fld.type === "file") {
-              const key = `${slug}__${normalizeKey(sectionKey)}__${normalizeKey(
-                fld.name
-              )}`;
-              return (
-                <Box key={fld.name} sx={{ mb: 1 }}>
-                  <Button variant="outlined" component="label">
-                    {fld.label}
-                    <input
-                      type="file"
-                      hidden
-                      multiple={false}
-                      onClick={(e) => (e.target.value = null)}
-                      onChange={(e) => handleFileUpload(e, key)}
-                    />
-                  </Button>
-                  {uploads[key]?.length
-                    ? uploads[key].map((file, index) => (
-                        <Box
-                          key={index}
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            ml: 1,
-                            mt: 0.5,
-                          }}
-                        >
-                          <Typography variant="caption">{file.name}</Typography>
-                          <IconButton
-                            size="small"
-                            onClick={() => removeUpload(key)}
-                            sx={{ ml: 0.5 }}
+          fields
+            .filter((f) => f.name !== "aadhaar" && f.name !== "pan")
+            .map((fld) => {
+              if (fld.type === "file") {
+                const key = `${slug}__${normalizeKey(
+                  sectionKey
+                )}__${normalizeKey(fld.name)}`;
+                return (
+                  <Box key={fld.name} sx={{ mb: 1 }}>
+                    <Button variant="outlined" component="label">
+                      {fld.label}
+                      <input
+                        type="file"
+                        hidden
+                        multiple={false}
+                        onClick={(e) => (e.target.value = null)}
+                        onChange={(e) => handleFileUpload(e, key)}
+                      />
+                    </Button>
+                    {uploads[key]?.length
+                      ? uploads[key].map((file, index) => (
+                          <Box
+                            key={index}
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              ml: 1,
+                              mt: 0.5,
+                            }}
                           >
-                            <DeleteIcon fontSize="inherit" />
-                          </IconButton>
-                        </Box>
-                      ))
-                    : null}
-                </Box>
-              );
-            }
+                            <Typography variant="caption">
+                              {file.name}
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              onClick={() => removeUpload(key)}
+                              sx={{ ml: 0.5 }}
+                            >
+                              <DeleteIcon fontSize="inherit" />
+                            </IconButton>
+                          </Box>
+                        ))
+                      : null}
+                  </Box>
+                );
+              }
 
-            // --- ADDED THIS BLOCK ---
-            if (fld.type === "date") {
-              const value = (creditCheck?.[fld.name] || "").split("T")[0];
+              // --- ADDED THIS BLOCK ---
+              if (fld.type === "date") {
+                const value = (creditCheck?.[fld.name] || "").split("T")[0];
+                return (
+                  <TextField
+                    key={fld.name}
+                    label={fld.label}
+                    type="date"
+                    InputLabelProps={{ shrink: true }}
+                    value={value}
+                    onChange={(e) =>
+                      setCreditCheck((prev) => ({
+                        ...prev,
+                        [fld.name]: e.target.value,
+                      }))
+                    }
+                    fullWidth
+                    size="small"
+                    sx={{ mb: 1 }}
+                  />
+                );
+              }
+              // --- END OF ADDED BLOCK ---
+
+              const value = creditCheck?.[fld.name] || "";
               return (
                 <TextField
                   key={fld.name}
                   label={fld.label}
-                  type="date"
-                  InputLabelProps={{ shrink: true }}
                   value={value}
                   onChange={(e) =>
                     setCreditCheck((prev) => ({
@@ -905,27 +929,7 @@ const CreateCasePage = () => {
                   sx={{ mb: 1 }}
                 />
               );
-            }
-            // --- END OF ADDED BLOCK ---
-
-            const value = creditCheck?.[fld.name] || "";
-            return (
-              <TextField
-                key={fld.name}
-                label={fld.label}
-                value={value}
-                onChange={(e) =>
-                  setCreditCheck((prev) => ({
-                    ...prev,
-                    [fld.name]: e.target.value,
-                  }))
-                }
-                fullWidth
-                size="small"
-                sx={{ mb: 1 }}
-              />
-            );
-          })}
+            })}
 
         {isGlobal &&
           fields.map((fld) => {

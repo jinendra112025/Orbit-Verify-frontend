@@ -27,7 +27,12 @@ import {
   Description as DescriptionIcon,
 } from "@mui/icons-material";
 
-const UploadCandidateDocumentsModal = ({ open, onClose, caseData, onUploadSuccess }) => {
+const UploadCandidateDocumentsModal = ({
+  open,
+  onClose,
+  caseData,
+  onUploadSuccess,
+}) => {
   const [selectedCheck, setSelectedCheck] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [educationDetails, setEducationDetails] = useState([]);
@@ -38,10 +43,10 @@ const UploadCandidateDocumentsModal = ({ open, onClose, caseData, onUploadSucces
 
   const handleFileSelect = (event) => {
     const files = Array.from(event.target.files);
-    
+
     // Check if education is selected
     const isEducation = selectedCheck.toLowerCase().includes("education");
-    
+
     if (isEducation) {
       // For education, add with empty details
       const newEducationEntries = files.map((file) => ({
@@ -59,7 +64,7 @@ const UploadCandidateDocumentsModal = ({ open, onClose, caseData, onUploadSucces
 
   const handleRemoveFile = (index) => {
     const isEducation = selectedCheck.toLowerCase().includes("education");
-    
+
     if (isEducation) {
       setEducationDetails(educationDetails.filter((_, i) => i !== index));
     } else {
@@ -138,7 +143,10 @@ const UploadCandidateDocumentsModal = ({ open, onClose, caseData, onUploadSucces
       formData.append("uploadMapping", JSON.stringify(uploadMapping));
 
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL || "https://orbit-verify-server.onrender.com/api"}/cases/${caseData._id}/upload-for-candidate`,
+        `${
+          process.env.REACT_APP_API_URL ||
+          "https://orbit-verify-server.onrender.com/api"
+        }/cases/${caseData._id}/upload-for-candidate`,
         {
           method: "POST",
           headers: {
@@ -154,8 +162,11 @@ const UploadCandidateDocumentsModal = ({ open, onClose, caseData, onUploadSucces
         throw new Error(data.msg || "Upload failed");
       }
 
-      setMessage({ type: "success", text: data.msg || "Documents uploaded successfully!" });
-      
+      setMessage({
+        type: "success",
+        text: data.msg || "Documents uploaded successfully!",
+      });
+
       // Reset form
       setTimeout(() => {
         setSelectedCheck("");
@@ -166,7 +177,10 @@ const UploadCandidateDocumentsModal = ({ open, onClose, caseData, onUploadSucces
       }, 1500);
     } catch (error) {
       console.error("Upload error:", error);
-      setMessage({ type: "error", text: error.message || "Failed to upload documents" });
+      setMessage({
+        type: "error",
+        text: error.message || "Failed to upload documents",
+      });
     } finally {
       setIsUploading(false);
     }
@@ -196,7 +210,11 @@ const UploadCandidateDocumentsModal = ({ open, onClose, caseData, onUploadSucces
 
       <DialogContent>
         {message.text && (
-          <Alert severity={message.type} sx={{ mb: 2 }} onClose={() => setMessage({ type: "", text: "" })}>
+          <Alert
+            severity={message.type}
+            sx={{ mb: 2 }}
+            onClose={() => setMessage({ type: "", text: "" })}
+          >
             {message.text}
           </Alert>
         )}
@@ -215,13 +233,22 @@ const UploadCandidateDocumentsModal = ({ open, onClose, caseData, onUploadSucces
             >
               {checks.map((check, idx) => (
                 <MenuItem key={idx} value={check.checkType}>
-                  <Box display="flex" alignItems="center" justifyContent="space-between" width="100%">
+                  <Box
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    width="100%"
+                  >
                     <Typography>
                       {check.checkType
                         .replace(/_/g, " ")
                         .replace(/\b\w/g, (l) => l.toUpperCase())}
                     </Typography>
-                    <Chip label={check.status} size="small" color={check.status === "Pending" ? "warning" : "default"} />
+                    <Chip
+                      label={check.status}
+                      size="small"
+                      color={check.status === "Pending" ? "warning" : "default"}
+                    />
                   </Box>
                 </MenuItem>
               ))}
@@ -254,73 +281,106 @@ const UploadCandidateDocumentsModal = ({ open, onClose, caseData, onUploadSucces
                   Selected Files ({displayFiles.length})
                 </Typography>
                 <List sx={{ maxHeight: 300, overflow: "auto" }}>
-                  {isEducation ? (
-                    educationDetails.map((item, idx) => (
-                      <Box key={idx}>
-                        <ListItem
-                          sx={{
-                            bgcolor: "grey.50",
-                            mb: 2,
-                            borderRadius: 1,
-                            flexDirection: "column",
-                            alignItems: "stretch",
-                          }}
-                        >
-                          <Box display="flex" alignItems="center" justifyContent="space-between" width="100%" mb={1}>
-                            <Box display="flex" alignItems="center" gap={1}>
-                              <DescriptionIcon color="action" />
-                              <ListItemText primary={item.file.name} secondary={`${(item.file.size / 1024).toFixed(2)} KB`} />
+                  {isEducation
+                    ? educationDetails.map((item, idx) => (
+                        <Box key={idx}>
+                          <ListItem
+                            sx={{
+                              bgcolor: "grey.50",
+                              mb: 2,
+                              borderRadius: 1,
+                              flexDirection: "column",
+                              alignItems: "stretch",
+                            }}
+                          >
+                            <Box
+                              display="flex"
+                              alignItems="center"
+                              justifyContent="space-between"
+                              width="100%"
+                              mb={1}
+                            >
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <DescriptionIcon color="action" />
+                                <ListItemText
+                                  primary={item.file.name}
+                                  secondary={`${(item.file.size / 1024).toFixed(
+                                    2
+                                  )} KB`}
+                                />
+                              </Box>
+                              <IconButton
+                                edge="end"
+                                onClick={() => handleRemoveFile(idx)}
+                              >
+                                <DeleteIcon />
+                              </IconButton>
                             </Box>
-                            <IconButton edge="end" onClick={() => handleRemoveFile(idx)}>
+                            <Divider sx={{ my: 1 }} />
+                            <Box display="flex" gap={1} flexDirection="column">
+                              <TextField
+                                size="small"
+                                label="University"
+                                value={item.university}
+                                onChange={(e) =>
+                                  handleEducationDetailChange(
+                                    idx,
+                                    "university",
+                                    e.target.value
+                                  )
+                                }
+                                required
+                              />
+                              <TextField
+                                size="small"
+                                label="Degree"
+                                value={item.degree}
+                                onChange={(e) =>
+                                  handleEducationDetailChange(
+                                    idx,
+                                    "degree",
+                                    e.target.value
+                                  )
+                                }
+                                required
+                              />
+                              <TextField
+                                size="small"
+                                label="Year"
+                                value={item.year}
+                                onChange={(e) =>
+                                  handleEducationDetailChange(
+                                    idx,
+                                    "year",
+                                    e.target.value
+                                  )
+                                }
+                                required
+                              />
+                            </Box>
+                          </ListItem>
+                        </Box>
+                      ))
+                    : selectedFiles.map((file, idx) => (
+                        <ListItem
+                          key={idx}
+                          sx={{ bgcolor: "grey.50", mb: 1, borderRadius: 1 }}
+                          secondaryAction={
+                            <IconButton
+                              edge="end"
+                              onClick={() => handleRemoveFile(idx)}
+                            >
                               <DeleteIcon />
                             </IconButton>
-                          </Box>
-                          <Divider sx={{ my: 1 }} />
-                          <Box display="flex" gap={1} flexDirection="column">
-                            <TextField
-                              size="small"
-                              label="University"
-                              value={item.university}
-                              onChange={(e) => handleEducationDetailChange(idx, "university", e.target.value)}
-                              required
-                            />
-                            <TextField
-                              size="small"
-                              label="Degree"
-                              value={item.degree}
-                              onChange={(e) => handleEducationDetailChange(idx, "degree", e.target.value)}
-                              required
-                            />
-                            <TextField
-                              size="small"
-                              label="Year"
-                              value={item.year}
-                              onChange={(e) => handleEducationDetailChange(idx, "year", e.target.value)}
-                              required
-                            />
-                          </Box>
+                          }
+                        >
+                          <DescriptionIcon color="action" sx={{ mr: 2 }} />
+                          <ListItemText
+                            primary={file.name}
+                            secondary={`${(file.size / 1024).toFixed(2)} KB`}
+                          />
                         </ListItem>
-                      </Box>
-                    ))
-                  ) : (
-                    selectedFiles.map((file, idx) => (
-                      <ListItem
-                        key={idx}
-                        sx={{ bgcolor: "grey.50", mb: 1, borderRadius: 1 }}
-                        secondaryAction={
-                          <IconButton edge="end" onClick={() => handleRemoveFile(idx)}>
-                            <DeleteIcon />
-                          </IconButton>
-                        }
-                      >
-                        <DescriptionIcon color="action" sx={{ mr: 2 }} />
-                        <ListItemText
-                          primary={file.name}
-                          secondary={`${(file.size / 1024).toFixed(2)} KB`}
-                        />
-                      </ListItem>
-                    ))
-                  )}
+                      ))}
                 </List>
               </>
             )}
@@ -336,7 +396,9 @@ const UploadCandidateDocumentsModal = ({ open, onClose, caseData, onUploadSucces
           onClick={handleUpload}
           variant="contained"
           disabled={isUploading || displayFiles.length === 0}
-          startIcon={isUploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+          startIcon={
+            isUploading ? <CircularProgress size={20} /> : <CloudUploadIcon />
+          }
         >
           {isUploading ? "Uploading..." : "Upload Documents"}
         </Button>

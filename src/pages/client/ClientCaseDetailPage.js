@@ -46,13 +46,18 @@ const getCheckIcon = (checkType = "") => {
     lowerCaseCheckType.includes("national id")
   )
     return <Fingerprint fontSize="small" />;
-  if (lowerCaseCheckType.includes("employment")) return <Work fontSize="small" />;
-  if (lowerCaseCheckType.includes("education")) return <School fontSize="small" />;
+  if (lowerCaseCheckType.includes("employment"))
+    return <Work fontSize="small" />;
+  if (lowerCaseCheckType.includes("education"))
+    return <School fontSize="small" />;
   if (lowerCaseCheckType.includes("address")) return <Home fontSize="small" />;
   if (lowerCaseCheckType.includes("court")) return <Gavel fontSize="small" />;
-  if (lowerCaseCheckType.includes("credit")) return <CreditCard fontSize="small" />;
-  if (lowerCaseCheckType.includes("reference")) return <PersonIcon fontSize="small" />;
-  if (lowerCaseCheckType.includes("directorship")) return <BadgeIcon fontSize="small" />;
+  if (lowerCaseCheckType.includes("credit"))
+    return <CreditCard fontSize="small" />;
+  if (lowerCaseCheckType.includes("reference"))
+    return <PersonIcon fontSize="small" />;
+  if (lowerCaseCheckType.includes("directorship"))
+    return <BadgeIcon fontSize="small" />;
   return <ArticleIcon fontSize="small" />;
 };
 
@@ -154,7 +159,11 @@ const renderCandidateData = (check, caseDetail) => {
         );
       }
 
-      if (value === null || value === undefined || String(value).trim() === "") {
+      if (
+        value === null ||
+        value === undefined ||
+        String(value).trim() === ""
+      ) {
         return null;
       }
 
@@ -273,8 +282,7 @@ const ClientCaseDetailPage = () => {
     );
   }
 
-  const isReportReady =
-    caseDetail.status 
+  const isReportReady = caseDetail.status;
 
   const safeChecks = (caseDetail.checks || []).filter(
     (check) => check && (check._id || check.checkType)
@@ -396,10 +404,7 @@ const ClientCaseDetailPage = () => {
                   value={candidate.candidateName}
                 />
                 <DetailItem label="Email" value={candidate.email} />
-                <DetailItem
-                  label="Designation"
-                  value={candidate.designation}
-                />
+                <DetailItem label="Designation" value={candidate.designation} />
                 <DetailItem label="Client" value={clientOrg.name} />
               </Grid>
               <Grid item xs={12} md={5}>
@@ -408,11 +413,11 @@ const ClientCaseDetailPage = () => {
                 </Typography>
                 <Divider sx={{ mb: 2 }} />
                 <DetailItem label="Case ID" value={caseDetail._id || id} />
+                <DetailItem label="Created On" value={formatDate(createdAt)} />
                 <DetailItem
-                  label="Created On"
-                  value={formatDate(createdAt)}
+                  label="Last Updated"
+                  value={formatDate(updatedAt)}
                 />
-                <DetailItem label="Last Updated" value={formatDate(updatedAt)} />
                 <DetailItem label="Current Status" value={caseDetail.status} />
               </Grid>
             </Grid>
