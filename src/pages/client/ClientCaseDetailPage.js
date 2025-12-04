@@ -274,8 +274,7 @@ const ClientCaseDetailPage = () => {
   }
 
   const isReportReady =
-    caseDetail.status &&
-    caseDetail.status.toLowerCase().includes("completed");
+    caseDetail.status 
 
   const safeChecks = (caseDetail.checks || []).filter(
     (check) => check && (check._id || check.checkType)
