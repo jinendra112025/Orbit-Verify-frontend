@@ -1485,6 +1485,10 @@ const AdminCaseDetailPage = () => {
             {caseDetail.candidateInfo?.candidateName}
           </Typography>
           <Typography>
+            <strong>Father's Name:</strong>{" "}
+            {caseDetail.candidateInfo?.fatherName}
+          </Typography>
+          <Typography>
             <strong>Email:</strong> {caseDetail.candidateInfo?.email}
           </Typography>
           <Typography>
