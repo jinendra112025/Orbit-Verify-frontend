@@ -559,15 +559,32 @@ const AdminCaseDetailPage = () => {
       const fd = new FormData();
       fd.append("caseId", id);
 
-      // Build updated checks payload (we send the full checks array to keep server state)
+      // Build updated checks payload
       const checksPayload = caseChecks.map((check, idx) => {
         if (idx === checkIndex) {
-          // Send the entire nested object for verifiedData and comments
+          const checkType = check.checkType || "";
+          const isMultiSection = multiSectionChecks.includes(checkType);
+
+          // For multi-section checks, comments should be an object
+          // For single-section checks, extract the string comment
+          let commentsToSave;
+          if (isMultiSection) {
+            // Keep as nested object: { current: "...", previous: "..." }
+            commentsToSave = stagedComments[checkIndex] || {};
+          } else {
+            // Extract the string comment from _default key
+            const commentObj = stagedComments[checkIndex] || {};
+            commentsToSave =
+              typeof commentObj === "string"
+                ? commentObj
+                : commentObj._default || commentObj.value || "";
+          }
+
           return {
             ...check,
             status: caseChecks[checkIndex]?.status || "Pending",
             verifiedData: stagedVerifiedData[checkIndex] || {},
-            comments: stagedComments[checkIndex] || {},
+            comments: commentsToSave,
           };
         }
         return check;
@@ -794,13 +811,28 @@ const AdminCaseDetailPage = () => {
     try {
       const fd = new FormData();
 
-      // --- FIX START ---
-      // Build a single, correct checks payload by merging all staged data into the main checks array.
-      const checksPayload = (caseChecks || []).map((check, idx) => ({
-        ...check,
-        comments: stagedComments[idx] ?? check.comments ?? "",
-        verifiedData: stagedVerifiedData[idx] ?? check.verifiedData ?? {},
-      }));
+      const checksPayload = (caseChecks || []).map((check, idx) => {
+        const checkType = check.checkType || "";
+        const isMultiSection = multiSectionChecks.includes(checkType);
+
+        let commentsToSave;
+        if (isMultiSection) {
+          commentsToSave = stagedComments[idx] || {};
+        } else {
+          const commentObj = stagedComments[idx] || {};
+          commentsToSave =
+            typeof commentObj === "string"
+              ? commentObj
+              : commentObj._default || commentObj.value || "";
+        }
+
+        return {
+          ...check,
+          comments: commentsToSave,
+          verifiedData: stagedVerifiedData[idx] ?? check.verifiedData ?? {},
+        };
+      });
+
       fd.append("checks", JSON.stringify(checksPayload));
       // The separate, conflicting payloads for verifiedData and comments are no longer needed.
       // --- FIX END ---
