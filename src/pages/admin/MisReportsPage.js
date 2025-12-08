@@ -15,8 +15,10 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  IconButton,
+  TextField,
 } from "@mui/material";
-import { Download as DownloadIcon } from "@mui/icons-material";
+import { Download as DownloadIcon, CalendarMonth } from "@mui/icons-material";
 import api from "../../services/api";
 
 const calculateTAT = (start, end) => {
@@ -64,6 +66,8 @@ const MisReportsPage = () => {
   const [clients, setClients] = useState([]);
   const [clientFilter, setClientFilter] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [editingRow, setEditingRow] = useState(null);
+  const [selectedDate, setSelectedDate] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -104,6 +108,27 @@ const MisReportsPage = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const saveCaseStartDate = async (caseId) => {
+    try {
+      const response = await api.put(
+        `/reports/update-case-start-date/${caseId}`,
+        { caseStartDate: selectedDate }
+      );
+
+      // Update UI
+      setCases((prev) =>
+        prev.map((c) =>
+          c._id === caseId ? { ...c, caseStartDate: selectedDate } : c
+        )
+      );
+
+      setEditingRow(null);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update case start date.");
+    }
   };
 
   if (loading) {
@@ -175,9 +200,38 @@ const MisReportsPage = () => {
                   {new Date(row.createdAt).toLocaleDateString()}
                 </TableCell>
                 <TableCell>
-                  {row.caseStartDate
-                    ? new Date(row.caseStartDate).toLocaleDateString()
-                    : "Not Started"}
+                  {editingRow === row._id ? (
+                    <TextField
+                      type="date"
+                      size="small"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      onBlur={() => saveCaseStartDate(row._id)}
+                      autoFocus
+                    />
+                  ) : (
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <span>
+                        {row.caseStartDate
+                          ? new Date(row.caseStartDate).toLocaleDateString()
+                          : "Not Started"}
+                      </span>
+
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setEditingRow(row._id);
+                          setSelectedDate(
+                            row.caseStartDate
+                              ? row.caseStartDate.split("T")[0]
+                              : ""
+                          );
+                        }}
+                      >
+                        <CalendarMonth fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  )}
                 </TableCell>
                 <TableCell>
                   {row.reportClosedDate
