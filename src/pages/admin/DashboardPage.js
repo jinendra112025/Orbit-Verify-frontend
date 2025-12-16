@@ -231,20 +231,22 @@ const DashboardPage = () => {
   // KPIs based on allCases (global totals)
   const kpiData = useMemo(
     () => ({
-      pending: allCases.filter((c) => getStatusKey(c.status) === "Pending")
+      pending: filteredCases.filter((c) => getStatusKey(c.status) === "Pending")
         .length,
-      insufficiency: allCases.filter(
+      insufficiency: filteredCases.filter(
         (c) => getStatusKey(c.status) === "Insufficiency"
       ).length,
-      amber: allCases.filter((c) => getStatusKey(c.status) === "Amber").length,
-      discrepancy: allCases.filter(
+      amber: filteredCases.filter((c) => getStatusKey(c.status) === "Amber")
+        .length,
+      discrepancy: filteredCases.filter(
         (c) => getStatusKey(c.status) === "Discrepancy"
       ).length,
-      green: allCases.filter((c) => getStatusKey(c.status) === "Clear").length,
-      onHold: allCases.filter((c) => getStatusKey(c.status) === "On Hold")
+      green: filteredCases.filter((c) => getStatusKey(c.status) === "Clear")
+        .length,
+      onHold: filteredCases.filter((c) => getStatusKey(c.status) === "On Hold")
         .length,
     }),
-    [allCases]
+    [filteredCases] // Changed dependency from allCases to filteredCases
   );
 
   // client-side pagination
